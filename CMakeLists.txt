@@ -71,9 +71,14 @@ if(NOT WIN32)
     target_link_libraries(cpustress PRIVATE Threads::Threads m)
 endif()
 
+# O $<0:> e uma generator expression que sempre resulta em texto vazio. Ela
+# existe so para o caminho conter uma genex: sem isso, geradores multi-config
+# (Visual Studio) acrescentam a configuracao ao final, e a DLL iria parar em
+# build/lib/Debug/cpustress.dll -- fora do -Djava.library.path que os scripts
+# passam, causando UnsatisfiedLinkError apenas no Windows.
 set_target_properties(cpustress PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<0:>"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<0:>")
 
 # GLOB_RECURSE porque as classes estao divididas em subpacotes (jni,
 # metrics, cli, ui).

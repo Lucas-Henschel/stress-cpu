@@ -7,7 +7,7 @@ if not exist "%DIR%\build\CMakeCache.txt" (
     if errorlevel 1 exit /b 1
 )
 
-cmake --build "%DIR%\build" > "%DIR%\build\last-build.log" 2>&1
+cmake --build "%DIR%\build" --config Release > "%DIR%\build\last-build.log" 2>&1
 if errorlevel 1 (
     type "%DIR%\build\last-build.log"
     echo.
