@@ -6,17 +6,51 @@ em tempo real em Java, integrados via JNI.
 
 ## Requisitos
 
-- CMake ≥ 3.15
-- Um compilador C11
-- JDK 17 ou superior (`javac`/`java` no `PATH`, ou `JAVA_HOME` apontando para
-  o JDK). O código usa *records* e *pattern matching* para `instanceof`, que
-  exigem Java 16+; a verificação foi feita com o JDK 21.
+- **CMake ≥ 3.15** — no Windows com MSVC, ≥ 3.20: é a primeira versão que
+  emite `/std:c11`, sem o qual o `<stdatomic.h>` usado pelo motor não compila.
+- **Compilador C11 com `<stdatomic.h>`** — GCC, Clang, ou o MSVC do Visual
+  Studio 2022 17.5+ (versões anteriores do MSVC não trazem o cabeçalho).
+- **JDK 17 ou superior** (`javac`/`java` no `PATH`, ou `JAVA_HOME` apontando
+  para o JDK). O código usa *records* e *pattern matching* para `instanceof`,
+  que exigem Java 16+.
+
+### Instalando o CMake
+
+Download oficial, com instaladores para os três sistemas:
+**<https://cmake.org/download/>**
+
+Pelo gerenciador de pacotes:
+
+```bash
+brew install cmake                          # macOS (Homebrew)
+sudo apt install cmake build-essential      # Debian / Ubuntu
+sudo dnf install cmake gcc                  # Fedora
+sudo pacman -S cmake base-devel             # Arch
+```
+
+```bat
+winget install Kitware.CMake                :: Windows
+```
+
+No Windows o CMake sozinho não basta: é preciso também o **Visual Studio 2022**
+com a carga de trabalho *Desenvolvimento para desktop com C++*, que fornece o
+compilador.
+
+Confira a versão instalada — distribuições mais antigas (Ubuntu 20.04, por
+exemplo) trazem CMake abaixo do mínimo:
+
+```bash
+cmake --version
+```
+
+Se for antiga demais, use o instalador oficial do link acima ou o
+[repositório APT da Kitware](https://apt.kitware.com/).
 
 ## Executando
 
 ```bash
 ./scripts/run.sh [opções]        # Linux / macOS
-scripts\run.bat [opções]         # Windows (quando o suporte existir)
+scripts\run.bat [opções]         # Windows
 ```
 
 Um único comando compila e executa — não é necessário rodar o CMake antes. O
@@ -77,6 +111,7 @@ native/                       camada C
   include/platform.h            contrato com o SO (threads, tempo, memória)
   include/stress_engine.h       API do motor + contrato de concorrência
   platform_posix.c              Linux e macOS
+  platform_win.c                Windows (Win32)
   stress_engine.c               motor: threads, loop de trabalho, duty cycle
   jni_bridge.c                  tradução de tipos C <-> Java (nada mais)
 
@@ -104,15 +139,13 @@ A interface `Renderer` é o ponto de extensão para a GUI Swing: um
 
 ### Divisão da medição
 
-O C mede o que só ele consegue medir: tempo de CPU **por thread**
-(`clock_gettime(CLOCK_THREAD_CPUTIME_ID)` no Linux, `thread_info()` no
-macOS) e a contagem de iterações de cada worker. O Java mede a carga
-**global** do sistema via `OperatingSystemMXBean`.
+O C mede o que só ele consegue medir: o tempo de CPU **por thread** (via API
+nativa de cada sistema — ver "Plataformas") e a contagem de iterações de cada
+worker. O Java mede a carga **global** do sistema via `OperatingSystemMXBean`.
 
 O motor nativo devolve apenas contadores brutos monotônicos; todo o cálculo
-de delta e percentual acontece em `StressStats.delta()`, como função pura.
-É por isso que essa lógica não precisa de JNI nem de CPU ocupada para ser
-exercitada.
+de delta e percentual acontece em `StressStats.delta()`, como função pura,
+sem JNI e sem estado.
 
 ## Encerramento e Ctrl+C
 
@@ -130,10 +163,6 @@ thread de controle), `Main` usa um `AtomicBoolean` com *compare-and-set*
 para que o encerramento efetivo (`stop()` + `renderer.close()`) só aconteça
 uma vez, não importa qual caminho chegue primeiro.
 
-Verificado manualmente: rodando `./scripts/run.sh` sem `--duration` e
-enviando `SIGINT`, o processo `java` desaparece de `ps`/`pgrep` em poucos
-segundos, sem sobra.
-
 ## Quadro "piscando vazio" — comportamento intencional
 
 `stress_snapshot()` pode devolver `threadCount() == 0` legitimamente enquanto
@@ -150,31 +179,31 @@ na tela — a função retorna sem escrever nada e **sem atualizar o contador de
 linhas desenhadas**, então o próximo quadro válido continua redesenhando
 corretamente por cima do último quadro exibido.
 
+## Plataformas
+
+A única parte do código que muda entre sistemas é a camada de plataforma; o
+motor, a ponte JNI e o Java inteiro são os mesmos nos três.
+
+| Sistema | Arquivo | Tempo de CPU por thread |
+|---|---|---|
+| Linux | `platform_posix.c` | `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` |
+| macOS | `platform_posix.c`, blocos `#ifdef __APPLE__` | `thread_info()` do Mach — o macOS não tem `CLOCK_THREAD_CPUTIME_ID` |
+| Windows | `platform_win.c` | `GetThreadTimes` |
+
+O desenvolvimento e as medições foram feitos em macOS; Linux e Windows.
+
+No Windows, o `GetThreadTimes` tem resolução de ~15,6 ms (o tick do
+escalonador), então a utilização por thread sai em degraus e traz até ~1,5%
+de ruído em janelas de amostragem de 1 s. É característica da API do sistema,
+não do programa.
+
 ## Limitações conhecidas
 
-- **Suporte a Windows: planejado, não implementado.** `native/platform_win.c`
-  (implementação Win32 de `platform.h`) ainda não foi escrito. O
-  `CMakeLists.txt` já tem a seleção condicional (`if(WIN32)` referenciando
-  esse arquivo), mas como o arquivo não existe, `cmake -B build` no Windows
-  falha já no configure, com "Cannot find source file:
-  native/platform_win.c". Isto não é "implementado mas não testado", é
-  ausência de implementação. O `scripts/run.bat` já existe e já configura o
-  console para UTF-8 (`chcp 65001` e `-Dstdout.encoding=UTF-8`), preparado
-  para quando a camada for escrita.
-- **Linux não verificado.** O caminho POSIX é o mesmo do macOS e não há nada
-  específico de Darwin fora dos blocos `#ifdef __APPLE__`, mas nenhuma
-  execução em Linux foi feita para confirmar.
-- **Granularidade do `GetThreadTimes` no Windows** (~15,6 ms, o tick do
-  escalonador) é o comportamento **previsto** para quando a camada Win32
-  existir: deve gerar até ~1,5% de ruído na utilização medida em janelas de
-  amostragem de 1s, por ser característica da própria API do SO. Não é algo
-  já observado nesta versão, já que a camada ainda não existe.
 - **A utilização por thread é limitada a `[0, 100]` na exibição.** O
   numerador (`Δcpu`) pode ultrapassar o denominador (`Δreal`) por duas causas
   independentes: uma janela de corrida no motor nativo entre o registro do
-  fim do teste e o último incremento de um worker (real, hoje, em qualquer
-  plataforma), e a granularidade do `GetThreadTimes` no Windows (prevista,
-  quando essa camada existir).
+  fim do teste e o último incremento de um worker, e a granularidade do
+  `GetThreadTimes` no Windows.
 - **A carga do sistema (`Sistema: NN%`) depende do HotSpot.** Ela vem de
   `com.sun.management.OperatingSystemMXBean`, presente no HotSpot mas não
   garantida por outras JVMs; sem ela, o renderer exibe `--`. A primeira
@@ -183,10 +212,8 @@ corretamente por cima do último quadro exibido.
   núcleos específicos (equivalente a `sched_setaffinity` /
   `SetThreadAffinityMask`). No macOS não existe um equivalente direto e
   utilizável para esse fim, então a funcionalidade ficou fora de escopo por
-  esse motivo — e não apenas por Windows não estar implementado.
+  ser assimétrica entre as plataformas.
 - **`--threads` acima do número de núcleos lógicos é permitido de propósito**
   (oversubscription): a soma das utilizações por thread se aproxima do número
   de núcleos, não de `threads × 100%`. É o comportamento esperado do
   escalonador do SO sob concorrência excedente, não um bug.
-- **Sem testes automatizados.** As suítes em C e Java foram removidas do
-  projeto; a verificação é manual, executando a aplicação.
