@@ -1,0 +1,7 @@
+.superpowers
+/build
+/docs
+
+# IntelliJ IDEA
+.idea/
+*.iml
