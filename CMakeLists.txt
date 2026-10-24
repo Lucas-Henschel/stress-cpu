@@ -104,6 +104,32 @@ add_custom_target(java ALL
 
 add_dependencies(java jni_header)
 
+include(CTest)
+if(BUILD_TESTING)
+    file(GLOB_RECURSE JAVA_TEST_SOURCES CONFIGURE_DEPENDS
+         ${CMAKE_SOURCE_DIR}/test/java/*.java)
+    set(JAVA_TEST_CLASSES_DIR "${CMAKE_BINARY_DIR}/test-classes")
+    set(JAVA_TEST_CLASSPATH
+        "${CMAKE_BINARY_DIR}/classes${JAVA_CLASSPATH_SEPARATOR}${JAVA_TEST_CLASSES_DIR}")
+
+    add_custom_target(java_tests ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${JAVA_TEST_CLASSES_DIR}"
+        COMMAND ${Java_JAVAC_EXECUTABLE}
+                -cp "${CMAKE_BINARY_DIR}/classes"
+                -d "${JAVA_TEST_CLASSES_DIR}"
+                ${JAVA_TEST_SOURCES}
+        DEPENDS java ${JAVA_TEST_SOURCES}
+        VERBATIM
+        COMMENT "Compilando testes Java")
+
+    add_test(NAME StressConfigurationTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.model.StressConfigurationTest)
+    add_test(NAME MockStressDataSourceTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.mock.MockStressDataSourceTest)
+endif()
+
 add_custom_target(run_gui
     COMMAND ${Java_JAVA_EXECUTABLE}
             "-Djava.library.path=${CMAKE_BINARY_DIR}/lib"
