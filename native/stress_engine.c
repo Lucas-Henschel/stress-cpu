@@ -17,13 +17,27 @@
 
    O _Alignas no primeiro membro ja arredonda sizeof(worker_t) para o proximo
    multiplo de 64 (C11 6.7.5/6.2.8): nao e preciso nenhum campo de padding
-   explicito. Com os quatro campos abaixo, sizeof == 64 == uma linha de cache,
-   que e exatamente a intencao. */
+   explicito. Com os campos abaixo, sizeof == 64 == uma linha de cache, que e
+   exatamente a intencao.
+
+   cpu e o nucleo em que a thread deve se fixar (-1 = o escalonador decide).
+   pin_status e escrito pela propria worker depois de tentar se fixar e lido
+   pela thread de controle em stress_start(): PIN_PENDENTE ate la, depois um
+   dos PLATFORM_PIN_*. */
 typedef struct {
     _Alignas(64) atomic_uint_fast64_t iterations;
     atomic_uint_fast64_t cpu_ns;
     int load_pct;
+    int cpu;
+    _Atomic int pin_status;
 } worker_t;
+
+#define PIN_PENDENTE 2
+
+/* Quanto stress_start() espera as workers reportarem a afinidade antes de
+   desistir. Criar e fixar uma thread leva microssegundos; o limite so existe
+   para que um SO travado nao trave o start para sempre. */
+#define PIN_TIMEOUT_MS 5000
 
 #define WORKER_ALIGN 64
 
@@ -129,6 +143,14 @@ static void worker_main(void *arg) {
     double x = 1.0;
     uint64_t inicio_janela = platform_monotonic_ns();
 
+    /* A fixacao acontece aqui, na propria thread e antes do primeiro lote:
+       assim nenhuma iteracao roda fora do nucleo pedido, e a camada de
+       plataforma nao precisa expor handles de thread so para isso. */
+    int pin = (w->cpu >= 0) ? platform_pin_current_thread(w->cpu)
+                            : PLATFORM_PIN_OK;
+    atomic_store_explicit(&w->pin_status, pin, memory_order_release);
+    if (pin == PLATFORM_PIN_FAILED) return;   /* stress_start() desfaz tudo */
+
     while (atomic_load_explicit(&g_running, memory_order_relaxed)) {
         for (int i = 0; i < BATCH; i++) {
             x = sqrt(x * 1.0000001 + 1.0);
@@ -184,6 +206,8 @@ static worker_t *arena_obter(void) {
        precisam conter atomicos validos, nao bytes indeterminados. */
     for (int i = 0; i < STRESS_MAX_THREADS; i++) {
         arena[i].load_pct = 100;
+        arena[i].cpu = -1;
+        atomic_init(&arena[i].pin_status, PIN_PENDENTE);
         atomic_init(&arena[i].iterations, 0);
         atomic_init(&arena[i].cpu_ns, 0);
     }
@@ -191,9 +215,45 @@ static worker_t *arena_obter(void) {
     return arena;
 }
 
-int stress_start(int n_threads, int load_pct) {
+/* Espera todas as workers reportarem a afinidade. Devolve o indice da
+   primeira que falhou (ou que nao respondeu no prazo), ou -1 se nenhuma
+   falhou. *suportada recebe 0 se o SO nao oferece afinidade rigida. */
+static int aguardar_afinidade(worker_t *arena, int n, int *suportada) {
+    *suportada = 1;
+    uint64_t prazo = platform_monotonic_ns()
+                   + (uint64_t)PIN_TIMEOUT_MS * 1000000ull;
+    for (int i = 0; i < n; i++) {
+        int st;
+        while ((st = atomic_load_explicit(&arena[i].pin_status,
+                                          memory_order_acquire)) == PIN_PENDENTE) {
+            if (platform_monotonic_ns() > prazo) return i;
+            platform_sleep_ms(1);
+        }
+        if (st == PLATFORM_PIN_FAILED) return i;
+        if (st == PLATFORM_PIN_UNSUPPORTED) *suportada = 0;
+    }
+    return -1;
+}
+
+/* Retira a geracao publicada depois de um start que falhou: um snapshot
+   concorrente passa a ver "motor inativo" em vez das threads que morreram. */
+static void despublicar(void) {
+    marcar_transicao();
+    atomic_store_explicit(&g_n_threads, 0, memory_order_release);
+    marcar_transicao();
+}
+
+int stress_start(int n_threads, const int *cpus, const int *loads,
+                 int *afinidade) {
     if (n_threads < 1 || n_threads > STRESS_MAX_THREADS) return STRESS_ERR_ARGS;
-    if (load_pct < 1 || load_pct > 100) return STRESS_ERR_ARGS;
+    if (loads == NULL || afinidade == NULL) return STRESS_ERR_ARGS;
+    int n_cpus = platform_cpu_count();
+    for (int i = 0; i < n_threads; i++) {
+        if (loads[i] < 1 || loads[i] > 100) return STRESS_ERR_ARGS;
+        if (cpus != NULL && (cpus[i] < 0 || cpus[i] >= n_cpus)) {
+            return STRESS_ERR_ARGS;
+        }
+    }
     if (atomic_load(&g_running)) return STRESS_ERR_RUNNING;
 
     /* A arena e reaproveitada entre ciclos e nunca liberada: ver o comentario
@@ -218,7 +278,10 @@ int stress_start(int n_threads, int load_pct) {
        geracao anterior existe aqui (stress_stop ja fez join de todas), entao
        id/load_pct podem ser escritos normalmente. */
     for (int i = 0; i < n_threads; i++) {
-        arena[i].load_pct = load_pct;
+        arena[i].load_pct = loads[i];
+        arena[i].cpu = (cpus != NULL) ? cpus[i] : -1;
+        atomic_store_explicit(&arena[i].pin_status, PIN_PENDENTE,
+                              memory_order_relaxed);
         atomic_store_explicit(&arena[i].iterations, 0, memory_order_relaxed);
         atomic_store_explicit(&arena[i].cpu_ns, 0, memory_order_relaxed);
     }
@@ -240,14 +303,26 @@ int stress_start(int n_threads, int load_pct) {
             /* Falha parcial: encerra as threads ja criadas antes de desistir. */
             atomic_store(&g_running, false);
             for (int j = 0; j < i; j++) platform_thread_join(g_threads[j]);
-            marcar_transicao();
-            atomic_store_explicit(&g_n_threads, 0, memory_order_release);
-            marcar_transicao();
+            despublicar();
             free(g_threads); g_threads = NULL;
             /* A arena NAO e liberada: ela sobrevive ao processo inteiro. */
             return STRESS_ERR_THREAD;
         }
     }
+
+    int suportada = 1;
+    if (cpus != NULL) {
+        int falhou = aguardar_afinidade(arena, n_threads, &suportada);
+        if (falhou >= 0) {
+            /* Rodar com uma thread fora do nucleo pedido falsificaria o
+               teste: desfaz tudo e informa qual nucleo recusou. */
+            stress_stop();
+            despublicar();
+            *afinidade = cpus[falhou];
+            return STRESS_ERR_AFFINITY;
+        }
+    }
+    *afinidade = (cpus != NULL && suportada) ? 1 : 0;
     return STRESS_OK;
 }
 

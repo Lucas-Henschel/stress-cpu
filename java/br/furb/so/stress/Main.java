@@ -37,8 +37,15 @@ public final class Main {
         Renderer renderer = new ConsoleRenderer();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> encerrar(renderer)));
 
-        CpuStress.start(args.threads(), args.loadPct());
-        renderer.start(cpus, args);
+        boolean afinidade;
+        try {
+            afinidade = CpuStress.start(args.cores(), args.loads());
+        } catch (IllegalStateException e) {
+            System.err.println("Erro: " + e.getMessage());
+            System.exit(1);
+            return;
+        }
+        renderer.start(cpus, args, afinidade);
 
         int tamanho = CpuStress.snapshotSize(args.threads());
         long[] anterior = new long[tamanho];
