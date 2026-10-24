@@ -48,6 +48,14 @@ find_package(JNI REQUIRED)
 
 set(JAVA_SRC_DIR ${CMAKE_SOURCE_DIR}/java)
 set(GEN_DIR ${CMAKE_BINARY_DIR}/generated)
+set(FLATLAF_VERSION "3.7.2")
+set(FLATLAF_JAR "${CMAKE_SOURCE_DIR}/lib/flatlaf-${FLATLAF_VERSION}.jar")
+
+if(WIN32)
+    set(JAVA_CLASSPATH_SEPARATOR ";")
+else()
+    set(JAVA_CLASSPATH_SEPARATOR ":")
+endif()
 
 # Gera o header JNI a partir de CpuStress.java antes de compilar a ponte.
 add_custom_command(
@@ -87,9 +95,21 @@ file(GLOB_RECURSE JAVA_SOURCES CONFIGURE_DEPENDS
 
 add_custom_target(java ALL
     COMMAND ${Java_JAVAC_EXECUTABLE}
+            -cp "${FLATLAF_JAR}"
             -d ${CMAKE_BINARY_DIR}/classes
             ${JAVA_SOURCES}
-    DEPENDS ${JAVA_SOURCES}
+    DEPENDS ${JAVA_SOURCES} "${FLATLAF_JAR}"
+    VERBATIM
     COMMENT "Compilando classes Java")
 
 add_dependencies(java jni_header)
+
+add_custom_target(run_gui
+    COMMAND ${Java_JAVA_EXECUTABLE}
+            "-Djava.library.path=${CMAKE_BINARY_DIR}/lib"
+            -cp "${CMAKE_BINARY_DIR}/classes${JAVA_CLASSPATH_SEPARATOR}${FLATLAF_JAR}"
+            br.furb.so.stress.gui.GuiMain
+    DEPENDS java cpustress
+    USES_TERMINAL
+    VERBATIM
+    COMMENT "Iniciando interface grafica")
