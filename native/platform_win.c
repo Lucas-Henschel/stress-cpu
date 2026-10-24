@@ -113,6 +113,17 @@ int platform_thread_join(platform_thread_t t) {
     return (r == WAIT_OBJECT_0) ? 0 : -1;
 }
 
+int platform_pin_current_thread(int cpu) {
+    /* A mascara cobre os nucleos do grupo de processadores da thread, ate 64.
+       platform_cpu_count() (GetSystemInfo) tambem so enxerga esse grupo, entao
+       todo nucleo que o Java aceita cabe aqui. */
+    if (cpu < 0 || cpu >= (int)(sizeof(DWORD_PTR) * 8)) return PLATFORM_PIN_FAILED;
+    DWORD_PTR mascara = (DWORD_PTR)1 << cpu;
+    return SetThreadAffinityMask(GetCurrentThread(), mascara) != 0
+         ? PLATFORM_PIN_OK
+         : PLATFORM_PIN_FAILED;
+}
+
 void platform_enable_vt_mode(void) {
     HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
     if (h == INVALID_HANDLE_VALUE || h == NULL) return;

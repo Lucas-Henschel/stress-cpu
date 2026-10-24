@@ -32,10 +32,18 @@ public final class CpuStress {
     public static native int cpuCount();
 
     /**
-     * @throws IllegalStateException se os argumentos forem invalidos
-     * ou o motor ja estiver em execucao.
+     * Inicia uma thread por posicao de {@code loads}.
+     *
+     * @param cores nucleo logico em que cada thread deve ser fixada, ou
+     *              {@code null} para deixar o escalonador decidir
+     * @param loads carga alvo de cada thread, em [1, 100]
+     * @return {@code true} se cada thread foi fixada no nucleo pedido;
+     *         {@code false} se {@code cores} for null ou se o SO nao oferece
+     *         afinidade rigida (macOS) -- o teste roda mesmo assim, sem fixar
+     * @throws IllegalStateException se os argumentos forem invalidos, o motor
+     *         ja estiver em execucao ou o SO recusar fixar algum nucleo.
      */
-    public static native void start(int threads, int loadPct);
+    public static native boolean start(int[] cores, int[] loads);
 
     public static native void stop();
 

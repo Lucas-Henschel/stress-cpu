@@ -8,6 +8,7 @@
 #define STRESS_ERR_RUNNING (-2)
 #define STRESS_ERR_THREAD  (-3)
 #define STRESS_ERR_BUFFER  (-4)
+#define STRESS_ERR_AFFINITY (-5)
 
 #define STRESS_MAX_THREADS 1024
 
@@ -62,9 +63,24 @@
  *     sem escrever nada. Dimensione `out` pelo n que foi pedido ao start.
  */
 
-/* Inicia o teste. n_threads em [1, 1024], load_pct em [1, 100].
-   Retorna STRESS_OK ou um dos codigos de erro acima. */
-int stress_start(int n_threads, int load_pct);
+/* Inicia o teste com n_threads em [1, 1024].
+
+   loads[i]  carga alvo da thread i, em [1, 100]. Obrigatorio.
+   cpus[i]   nucleo logico em que a thread i deve ser fixada, em
+             [0, stress_cpu_count() - 1]; NULL deixa o escalonador decidir.
+
+   Retorna STRESS_OK ou um dos codigos de erro acima. O significado de
+   *afinidade depende do retorno:
+     STRESS_OK            1 se cada thread foi fixada no nucleo pedido; 0 se
+                          cpus == NULL ou se o SO nao oferece afinidade
+                          rigida (macOS) -- nesse caso o teste roda, com as
+                          cargas pedidas, mas sem fixar.
+     STRESS_ERR_AFFINITY  o nucleo que o SO recusou (offline, ou fora do
+                          conjunto permitido ao processo). Nenhuma thread
+                          fica rodando.
+     demais               nao e escrito. */
+int stress_start(int n_threads, const int *cpus, const int *loads,
+                 int *afinidade);
 
 /* Sinaliza parada e aguarda todas as threads (join). Idempotente. */
 void stress_stop(void);

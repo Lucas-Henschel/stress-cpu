@@ -13,6 +13,13 @@ if(NOT MSVC)
     add_compile_options(-O2 -Wall -Wextra)
 endif()
 
+# O <stdatomic.h> do MSVC so funciona com /experimental:c11atomics; sem a
+# flag, o cabecalho para com '#error: "C atomic support is not enabled"',
+# mesmo com /std:c11.
+if(MSVC)
+    add_compile_options(/experimental:c11atomics)
+endif()
+
 if(WIN32)
     set(PLATFORM_SRC native/platform_win.c)
 else()
@@ -54,6 +61,7 @@ add_custom_command(
     OUTPUT ${GEN_DIR}/br_furb_so_stress_jni_CpuStress.h
     COMMAND ${CMAKE_COMMAND} -E make_directory ${GEN_DIR}
     COMMAND ${Java_JAVAC_EXECUTABLE}
+            -encoding UTF-8
             -h ${GEN_DIR}
             -d ${CMAKE_BINARY_DIR}/classes
             ${JAVA_SRC_DIR}/br/furb/so/stress/jni/CpuStress.java
@@ -80,6 +88,8 @@ set_target_properties(cpustress PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<0:>"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib/$<0:>")
 
+# -encoding UTF-8: ate o JDK 17 o javac le o fonte na codificacao padrao do
+# sistema (cp1252 no Windows), e os literais UTF-8 das barras viram mojibake.
 # GLOB_RECURSE porque as classes estao divididas em subpacotes (jni,
 # metrics, cli, ui).
 file(GLOB_RECURSE JAVA_SOURCES CONFIGURE_DEPENDS
@@ -87,6 +97,7 @@ file(GLOB_RECURSE JAVA_SOURCES CONFIGURE_DEPENDS
 
 add_custom_target(java ALL
     COMMAND ${Java_JAVAC_EXECUTABLE}
+            -encoding UTF-8
             -d ${CMAKE_BINARY_DIR}/classes
             ${JAVA_SOURCES}
     DEPENDS ${JAVA_SOURCES}

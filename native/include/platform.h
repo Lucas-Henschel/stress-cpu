@@ -34,6 +34,15 @@ int platform_thread_create(platform_thread_t *out, platform_thread_fn fn, void *
 /* Aguarda o término da thread. Retorna 0 em sucesso. */
 int platform_thread_join(platform_thread_t t);
 
+/* Resultado de platform_pin_current_thread. */
+#define PLATFORM_PIN_OK           0
+#define PLATFORM_PIN_UNSUPPORTED  1   /* o SO nao oferece afinidade rigida */
+#define PLATFORM_PIN_FAILED     (-1)  /* nucleo inexistente ou proibido ao processo */
+
+/* Fixa a THREAD CORRENTE no nucleo logico `cpu` (0-based). DEVE ser chamada
+   pela propria thread que sera fixada. Retorna um dos PLATFORM_PIN_* acima. */
+int platform_pin_current_thread(int cpu);
+
 /* Habilita sequências ANSI no console. No-op fora do Windows. */
 void platform_enable_vt_mode(void);
 
