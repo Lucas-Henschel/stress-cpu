@@ -62,6 +62,7 @@ add_custom_command(
     OUTPUT ${GEN_DIR}/br_furb_so_stress_jni_CpuStress.h
     COMMAND ${CMAKE_COMMAND} -E make_directory ${GEN_DIR}
     COMMAND ${Java_JAVAC_EXECUTABLE}
+            -encoding UTF-8
             -h ${GEN_DIR}
             -d ${CMAKE_BINARY_DIR}/classes
             ${JAVA_SRC_DIR}/br/furb/so/stress/jni/CpuStress.java
@@ -95,6 +96,7 @@ file(GLOB_RECURSE JAVA_SOURCES CONFIGURE_DEPENDS
 
 add_custom_target(java ALL
     COMMAND ${Java_JAVAC_EXECUTABLE}
+            -encoding UTF-8
             -cp "${FLATLAF_JAR}"
             -d ${CMAKE_BINARY_DIR}/classes
             ${JAVA_SOURCES}
@@ -115,6 +117,7 @@ if(BUILD_TESTING)
     add_custom_target(java_tests ALL
         COMMAND ${CMAKE_COMMAND} -E make_directory "${JAVA_TEST_CLASSES_DIR}"
         COMMAND ${Java_JAVAC_EXECUTABLE}
+                -encoding UTF-8
                 -cp "${CMAKE_BINARY_DIR}/classes"
                 -d "${JAVA_TEST_CLASSES_DIR}"
                 ${JAVA_TEST_SOURCES}
