@@ -16,6 +16,6 @@ if ! cmake --build "$DIR/build" > "$LOG" 2>&1; then
 fi
 
 exec java -Dstdout.encoding=UTF-8 \
-      -cp "$DIR/build/classes" \
+      -cp "$DIR/build/classes:$DIR/lib/flatlaf-3.7.2.jar" \
       -Djava.library.path="$DIR/build/lib" \
       br.furb.so.stress.Main "$@"

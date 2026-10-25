@@ -49,12 +49,12 @@ Se for antiga demais, use o instalador oficial do link acima ou o
 ## Executando
 
 ```bash
-./scripts/run.sh [opções]        # Linux / macOS
-scripts\run.bat [opções]         # Windows
+./scripts/run.sh                 # Linux / macOS
+scripts\run.bat                  # Windows
 ```
 
-Um único comando compila e executa — não é necessário rodar o CMake antes. O
-script configura o build na primeira chamada, refaz o build incremental nas
+Um único comando compila e abre a interface gráfica mockada — não é necessário
+rodar o CMake antes. O script configura o build na primeira chamada, refaz o build incremental nas
 seguintes e só então sobe a aplicação. Se a compilação falhar, ele imprime os
 erros e sai com código **1** sem chegar ao `java`, para que o erro real
 apareça em vez de um `UnsatisfiedLinkError` ou de classes desatualizadas
@@ -68,6 +68,9 @@ desenha o primeiro quadro — e só é exibida se o build falhar.
 
 ### Argumentos
 
+A interface gráfica é o modo padrão. Para usar o modo de terminal, acrescente
+`--console`; os argumentos abaixo são aplicados a esse modo:
+
 | Argumento | Padrão | Faixa | Efeito |
 |---|---|---|---|
 | `--threads=N` | número de núcleos lógicos | 1–1024 | Threads criadas. Acima do número de núcleos é permitido de propósito, para demonstrar *oversubscription* |
@@ -80,9 +83,10 @@ erro seguida do texto de uso, e encerra com código de saída **2**.
 ### Exemplos
 
 ```bash
-./scripts/run.sh                              # satura todos os nucleos
-./scripts/run.sh --load=50                    # mantem a CPU em ~50%
-./scripts/run.sh --threads=40 --duration=10s  # oversubscription por 10s
+./scripts/run.sh                              # abre a interface grafica mockada
+./scripts/run.sh --console                    # satura todos os nucleos no terminal
+./scripts/run.sh --console --load=50          # mantem a CPU em ~50%
+./scripts/run.sh --console --threads=40 --duration=10s  # oversubscription por 10s
 ```
 
 Pressione **Ctrl+C** para encerrar a qualquer momento — um shutdown hook para
