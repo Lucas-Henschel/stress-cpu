@@ -128,6 +128,14 @@ if(BUILD_TESTING)
     add_test(NAME MockStressDataSourceTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
                 br.furb.so.stress.gui.mock.MockStressDataSourceTest)
+    add_test(NAME DashboardPanelTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -Djava.awt.headless=true
+                -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.DashboardPanelTest)
+    add_test(NAME DashboardFrameTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.DashboardFrameTest)
+    set_tests_properties(DashboardFrameTest PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 20)
 endif()
 
 add_custom_target(run_gui

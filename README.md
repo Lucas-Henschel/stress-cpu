@@ -88,6 +88,40 @@ erro seguida do texto de uso, e encerra com código de saída **2**.
 Pressione **Ctrl+C** para encerrar a qualquer momento — um shutdown hook para
 as threads nativas antes do processo sair (ver "Encerramento e Ctrl+C").
 
+### Interface gráfica de simulação
+
+```bash
+cmake -B build
+cmake --build build --target run_gui
+```
+
+No Windows, use os mesmos alvos CMake em um terminal com o compilador
+configurado. `scripts\run.bat` e `scripts/run.sh` continuam abrindo o console.
+A janela Swing usa FlatLaf e dados **simulados**: selecionar núcleos e iniciar
+não executa o motor nativo nem mede a CPU real. O uso total mostrado é a média
+simulada de todos os processadores lógicos; os não selecionados ficam em zero.
+
+Roteiro de aceitação manual (macOS ou Windows):
+
+1. Abra a janela pelo alvo `run_gui`. Confira o aviso de simulação e os
+   cartões dos processadores lógicos; role a grade se necessário.
+2. Desselecione todos os núcleos e confira que `Iniciar teste` fica desabilitado.
+   Selecione um núcleo e confira o resumo da seleção.
+3. Ajuste a carga para **1%**, depois **100%**. Deixe a duração vazia.
+4. Clique em `Iniciar teste`. Confira o estado em execução, os controles
+   bloqueados e `Parar teste` habilitado. Observe pelo menos duas atualizações
+   das barras e do tempo decorrido.
+5. Clique em `Parar teste`. Confira o estado ocioso e a configuração preservada
+   (núcleos, carga de 100% e duração vazia), pronta para iniciar novamente.
+6. Digite uma duração inválida (`0` ou texto) e confira que iniciar é bloqueado.
+   Informe `1`, inicie e confira a parada automática após um segundo.
+7. Feche a janela e execute `scripts/run.sh --duration=1` (no Windows,
+   `scripts\run.bat --duration=1`): o teste nativo e a apresentação no console
+   devem continuar funcionando normalmente.
+
+Os testes Java podem ser executados com `cmake --build build --target java_tests`
+e `ctest --test-dir build --output-on-failure`.
+
 ## Compilação manual
 
 Só é necessária para compilar sem executar; `scripts/run.sh` já faz isso
