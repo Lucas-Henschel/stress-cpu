@@ -143,6 +143,9 @@ if(BUILD_TESTING)
     add_test(NAME RealStressMetricsTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
                 br.furb.so.stress.gui.model.RealStressMetricsTest)
+    add_test(NAME StressExecutionControllerTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.StressExecutionControllerTest)
     add_test(NAME DashboardPanelTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -Djava.awt.headless=true
                 -cp "${JAVA_TEST_CLASSPATH}"
