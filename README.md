@@ -6,8 +6,12 @@ em tempo real em Java, integrados via JNI.
 
 ## Requisitos
 
-- **CMake ≥ 3.15** — no Windows com MSVC, ≥ 3.20: é a primeira versão que
-  emite `/std:c11`, sem o qual o `<stdatomic.h>` usado pelo motor não compila.
+- **CMake ≥ 3.15** — no Windows com MSVC, ≥ 3.21: é a primeira versão com o
+  gerador do Visual Studio 2022 (a 3.20 é a primeira que emite `/std:c11`,
+  necessário para o `<stdatomic.h>` usado pelo motor). Sem um gerador do
+  Visual Studio, o CMake cai para `NMake Makefiles` e falha procurando o
+  `nmake`. O `CMakeLists.txt` também passa `/experimental:c11atomics`, que o
+  MSVC exige para liberar o `<stdatomic.h>` em C.
 - **Compilador C11 com `<stdatomic.h>`** — GCC, Clang, ou o MSVC do Visual
   Studio 2022 17.5+ (versões anteriores do MSVC não trazem o cabeçalho).
 - **JDK 17 ou superior** (`javac`/`java` no `PATH`, ou `JAVA_HOME` apontando
@@ -49,12 +53,12 @@ Se for antiga demais, use o instalador oficial do link acima ou o
 ## Executando
 
 ```bash
-./scripts/run.sh                 # Linux / macOS
-scripts\run.bat                  # Windows
+./scripts/run.sh [opções]        # Linux / macOS
+scripts\run.bat [opções]         # Windows
 ```
 
-Um único comando compila e abre a interface gráfica mockada — não é necessário
-rodar o CMake antes. O script configura o build na primeira chamada, refaz o build incremental nas
+Um único comando compila e executa — não é necessário rodar o CMake antes. O
+script configura o build na primeira chamada, refaz o build incremental nas
 seguintes e só então sobe a aplicação. Se a compilação falhar, ele imprime os
 erros e sai com código **1** sem chegar ao `java`, para que o erro real
 apareça em vez de um `UnsatisfiedLinkError` ou de classes desatualizadas
@@ -68,14 +72,12 @@ desenha o primeiro quadro — e só é exibida se o build falhar.
 
 ### Argumentos
 
-A interface gráfica é o modo padrão. Para usar o modo de terminal, acrescente
-`--console`; os argumentos abaixo são aplicados a esse modo:
-
 | Argumento | Padrão | Faixa | Efeito |
 |---|---|---|---|
 | `--threads=N` | número de núcleos lógicos | 1–1024 | Threads criadas. Acima do número de núcleos é permitido de propósito, para demonstrar *oversubscription* |
 | `--duration=Ns` | infinito (até Ctrl+C) | ≥ 1 | Parada automática após N segundos. Aceita sufixo `s` opcional (`--duration=10` ou `--duration=10s`) |
-| `--load=P` | 100 | 1–100 | Carga alvo por thread (duty cycle), em percentual |
+| `--cores=LISTA` | — | `0` a núcleos−1 | Núcleos a estressar, uma thread fixada em cada. Aceita índices e intervalos: `0,2,4-6`. Não combina com `--threads` |
+| `--load=P` ou `--load=P1,P2,…` | 100 | 1–100 | Carga alvo (duty cycle), em percentual. Um valor vale para todas as threads; uma lista dá uma carga por thread, na ordem de `--cores` (ou de `#0` em diante, sem `--cores`) |
 
 Argumento desconhecido, fora de faixa, ou malformado imprime uma mensagem de
 erro seguida do texto de uso, e encerra com código de saída **2**.
@@ -83,48 +85,37 @@ erro seguida do texto de uso, e encerra com código de saída **2**.
 ### Exemplos
 
 ```bash
-./scripts/run.sh                              # abre a interface grafica mockada
-./scripts/run.sh --console                    # satura todos os nucleos no terminal
-./scripts/run.sh --console --load=50          # mantem a CPU em ~50%
-./scripts/run.sh --console --threads=40 --duration=10s  # oversubscription por 10s
+./scripts/run.sh                              # satura todos os nucleos
+./scripts/run.sh --load=50                    # mantem a CPU em ~50%
+./scripts/run.sh --threads=40 --duration=10s  # oversubscription por 10s
+./scripts/run.sh --cores=0,2 --load=80,30     # nucleo 0 a 80%, nucleo 2 a 30%
+./scripts/run.sh --cores=1-3 --load=50        # nucleos 1, 2 e 3 a 50%
 ```
+
+No **PowerShell**, a vírgula é o operador de array e quebra o argumento em
+dois antes de ele chegar ao programa. Coloque entre aspas os argumentos que
+têm vírgula (no `cmd` não é preciso):
+
+```powershell
+.\scripts\run.bat "--cores=0,2" "--load=80,30"
+```
+
+### Escolhendo núcleos (`--cores`)
+
+Cada núcleo listado recebe uma thread, e cada thread se fixa no seu núcleo
+antes de começar a trabalhar. A numeração é a dos núcleos **lógicos** do SO —
+com Hyper-Threading/SMT, dois números podem ser os dois threads de hardware
+do mesmo núcleo físico. É a mesma numeração do Gerenciador de Tarefas
+(Windows, "Processadores lógicos") e do `htop` (Linux), o que permite
+conferir o resultado lá.
+
+Se o SO recusar a fixação — núcleo offline, ou fora do conjunto permitido ao
+processo, por exemplo num container limitado por cgroups — o programa não
+roda com uma thread fora do lugar: encerra com a mensagem de qual núcleo foi
+recusado e código de saída **1**.
 
 Pressione **Ctrl+C** para encerrar a qualquer momento — um shutdown hook para
 as threads nativas antes do processo sair (ver "Encerramento e Ctrl+C").
-
-### Interface gráfica de simulação
-
-```bash
-cmake -B build
-cmake --build build --target run_gui
-```
-
-No Windows, use os mesmos alvos CMake em um terminal com o compilador
-configurado. `scripts\run.bat` e `scripts/run.sh` continuam abrindo o console.
-A janela Swing usa FlatLaf e dados **simulados**: selecionar núcleos e iniciar
-não executa o motor nativo nem mede a CPU real. O uso total mostrado é a média
-simulada de todos os processadores lógicos; os não selecionados ficam em zero.
-
-Roteiro de aceitação manual (macOS ou Windows):
-
-1. Abra a janela pelo alvo `run_gui`. Confira o aviso de simulação e os
-   cartões dos processadores lógicos; role a grade se necessário.
-2. Desselecione todos os núcleos e confira que `Iniciar teste` fica desabilitado.
-   Selecione um núcleo e confira o resumo da seleção.
-3. Ajuste a carga para **1%**, depois **100%**. Deixe a duração vazia.
-4. Clique em `Iniciar teste`. Confira o estado em execução, os controles
-   bloqueados e `Parar teste` habilitado. Observe pelo menos duas atualizações
-   das barras e do tempo decorrido.
-5. Clique em `Parar teste`. Confira o estado ocioso e a configuração preservada
-   (núcleos, carga de 100% e duração vazia), pronta para iniciar novamente.
-6. Digite uma duração inválida (`0` ou texto) e confira que iniciar é bloqueado.
-   Informe `1`, inicie e confira a parada automática após um segundo.
-7. Feche a janela e execute `scripts/run.sh --duration=1` (no Windows,
-   `scripts\run.bat --duration=1`): o teste nativo e a apresentação no console
-   devem continuar funcionando normalmente.
-
-Os testes Java podem ser executados com `cmake --build build --target java_tests`
-e `ctest --test-dir build --output-on-failure`.
 
 ## Compilação manual
 
@@ -222,11 +213,11 @@ corretamente por cima do último quadro exibido.
 A única parte do código que muda entre sistemas é a camada de plataforma; o
 motor, a ponte JNI e o Java inteiro são os mesmos nos três.
 
-| Sistema | Arquivo | Tempo de CPU por thread |
-|---|---|---|
-| Linux | `platform_posix.c` | `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` |
-| macOS | `platform_posix.c`, blocos `#ifdef __APPLE__` | `thread_info()` do Mach — o macOS não tem `CLOCK_THREAD_CPUTIME_ID` |
-| Windows | `platform_win.c` | `GetThreadTimes` |
+| Sistema | Arquivo | Tempo de CPU por thread | Afinidade (`--cores`) |
+|---|---|---|---|
+| Linux | `platform_posix.c` | `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` | `pthread_setaffinity_np` |
+| macOS | `platform_posix.c`, blocos `#ifdef __APPLE__` | `thread_info()` do Mach — o macOS não tem `CLOCK_THREAD_CPUTIME_ID` | não suportada (ver abaixo) |
+| Windows | `platform_win.c` | `GetThreadTimes` | `SetThreadAffinityMask` |
 
 O desenvolvimento e as medições foram feitos em macOS; Linux e Windows.
 
@@ -246,11 +237,16 @@ não do programa.
   `com.sun.management.OperatingSystemMXBean`, presente no HotSpot mas não
   garantida por outras JVMs; sem ela, o renderer exibe `--`. A primeira
   amostra também mostra `--`, pois ainda não há duas leituras para comparar.
-- **Afinidade de núcleo não implementada.** O motor não fixa threads em
-  núcleos específicos (equivalente a `sched_setaffinity` /
-  `SetThreadAffinityMask`). No macOS não existe um equivalente direto e
-  utilizável para esse fim, então a funcionalidade ficou fora de escopo por
-  ser assimétrica entre as plataformas.
+- **No macOS, `--cores` não fixa as threads.** O macOS não oferece afinidade
+  rígida: a única API, `THREAD_AFFINITY_POLICY`, é uma dica que agrupa
+  threads por "tag" sem escolher o núcleo, e no Apple Silicon nem isso
+  (devolve `KERN_NOT_SUPPORTED`). Lá o programa aceita `--cores` e `--load`,
+  cria uma thread por núcleo pedido com a carga pedida, mas avisa na tela que
+  quem escolhe o núcleo é o escalonador. A carga por thread continua valendo;
+  o que não é garantido é *em qual* núcleo ela aparece.
+- **No Windows, `--cores` só alcança o grupo de processadores do processo**
+  (até 64 núcleos lógicos). Máquinas com mais de 64 núcleos dividem-nos em
+  grupos, e `platform_cpu_count()` já enxerga apenas o grupo corrente.
 - **`--threads` acima do número de núcleos lógicos é permitido de propósito**
   (oversubscription): a soma das utilizações por thread se aproxima do número
   de núcleos, não de `threads × 100%`. É o comportamento esperado do
