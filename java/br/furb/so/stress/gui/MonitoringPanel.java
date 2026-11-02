@@ -16,7 +16,7 @@ import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 
-/** All values displayed here are simulated, including unselected cores at zero. */
+/** Displays measured worker usage, keeping unselected logical processors at zero. */
 public final class MonitoringPanel extends JPanel {
     private final JLabel state = new JLabel("Estado: ocioso");
     private final JLabel elapsed = new JLabel("Tempo decorrido: 00:00:00");
@@ -35,9 +35,10 @@ public final class MonitoringPanel extends JPanel {
         title.setFont(title.getFont().deriveFont(Font.BOLD, 20));
         summary.add(title);
         summary.add(Box.createVerticalStrut(8));
-        JLabel simulation = new JLabel("SIMULAÇÃO • Dados fictícios, sem carga real na CPU");
-        simulation.setFont(simulation.getFont().deriveFont(Font.BOLD, 12));
-        summary.add(simulation);
+        JLabel source = new JLabel("Métricas medidas pelo motor nativo");
+        source.setName("metrics-source");
+        source.setFont(source.getFont().deriveFont(Font.BOLD, 12));
+        summary.add(source);
         summary.add(Box.createVerticalStrut(20));
         state.setName("state");
         elapsed.setName("elapsed");
@@ -45,7 +46,7 @@ public final class MonitoringPanel extends JPanel {
         summary.add(Box.createVerticalStrut(6));
         summary.add(elapsed);
         summary.add(Box.createVerticalStrut(16));
-        summary.add(new JLabel("Uso total simulado"));
+        summary.add(new JLabel("Uso médio dos processadores lógicos"));
         summary.add(Box.createVerticalStrut(8));
         total.setName("usage-total");
         total.setStringPainted(true);
@@ -63,7 +64,7 @@ public final class MonitoringPanel extends JPanel {
                 BorderFactory.createTitledBorder("Núcleo " + index),
                 BorderFactory.createEmptyBorder(8, 10, 12, 10)));
             card.setPreferredSize(new Dimension(160, 94));
-            card.add(new JLabel("Uso simulado"), BorderLayout.NORTH);
+            card.add(new JLabel("Uso medido"), BorderLayout.NORTH);
             JProgressBar progress = new JProgressBar(0, 100);
             progress.setName("usage-core-" + index);
             progress.setStringPainted(true);
@@ -81,7 +82,17 @@ public final class MonitoringPanel extends JPanel {
     }
 
     public void setRunning(boolean running) {
-        state.setText(running ? "Estado: em execução (simulação)" : "Estado: ocioso");
+        setRunning(running, false);
+    }
+
+    public void setRunning(boolean running, boolean affinityFixed) {
+        if (!running) {
+            state.setText("Estado: ocioso");
+        } else if (affinityFixed) {
+            state.setText("Estado: em execução (afinidade fixada)");
+        } else {
+            state.setText("Estado: em execução (afinidade não fixada)");
+        }
     }
 
     public void updateMetrics(List<CoreMetric> metrics, long elapsedMillis) {

@@ -20,6 +20,7 @@ public final class DashboardPanelTest {
         SwingUtilities.invokeAndWait(() -> {
             validatesConfigurationAndPreservesValuesAfterStop();
             updatesMetricsAndClearsCoresMissingFromTheNextSample();
+            describesRealMonitoringAndAffinity();
             supportsManyLogicalProcessors();
         });
         System.out.println("DashboardPanelTest passed");
@@ -92,6 +93,15 @@ public final class DashboardPanelTest {
         var monitoring = new MonitoringPanel(128);
         monitoring.updateMetrics(List.of(new CoreMetric(127, 75)), 0);
         assert find(monitoring, "usage-core-127", JProgressBar.class).getValue() == 75;
+    }
+
+    private static void describesRealMonitoringAndAffinity() {
+        var panel = new MonitoringPanel(2);
+        assert !find(panel, "metrics-source", JLabel.class).getText().contains("SIMULAÇÃO");
+        panel.setRunning(true, true);
+        assert find(panel, "state", JLabel.class).getText().contains("afinidade fixada");
+        panel.setRunning(true, false);
+        assert find(panel, "state", JLabel.class).getText().contains("afinidade não fixada");
     }
 
     static <T extends Component> T find(Container root, String name, Class<T> type) {
