@@ -10,11 +10,13 @@ public final class ConsoleRenderer implements Renderer {
     private int linhasDesenhadas = 0;
     private int cpuCount;
     private Args args;
+    private boolean afinidadeFixada;
 
     @Override
-    public void start(int cpuCount, Args args) {
+    public void start(int cpuCount, Args args, boolean afinidadeFixada) {
         this.cpuCount = cpuCount;
         this.args = args;
+        this.afinidadeFixada = afinidadeFixada;
         System.out.println();
     }
 
@@ -31,10 +33,20 @@ public final class ConsoleRenderer implements Renderer {
         }
 
         int linhas = 0;
+        String carga = args.cargaUniforme()
+            ? args.loads()[0] + "%"
+            : "por nucleo";
         linhas += linha(sb, String.format(
-            "CPU Stress Test — %d nucleos | %d threads | carga alvo: %d%%",
-            cpuCount, args.threads(), args.loadPct())
+            "CPU Stress Test — %d nucleos | %d threads | carga alvo: %s",
+            cpuCount, args.threads(), carga)
         );
+
+        if (args.cores() != null) {
+            linhas += linha(sb, afinidadeFixada
+                ? "Afinidade: cada thread fixada no nucleo indicado"
+                : "Afinidade: este SO nao permite fixar threads em nucleos (macOS);"
+                  + " o escalonador escolhe o nucleo");
+        }
 
         String sistema = Double.isNaN(s.systemLoad())
             ? "--"
@@ -46,11 +58,16 @@ public final class ConsoleRenderer implements Renderer {
         linhas += linha(sb, "");
 
         for (int i = 0; i < s.threadCount(); i++) {
+            String nucleo = args.cores() != null
+                ? String.format("  nucleo %-3d", args.cores()[i])
+                : "";
             linhas += linha(
-                sb, String.format(" #%-3d [%s] %5.1f%%  %7.2f Mit/s",
+                sb, String.format(" #%-3d%s [%s] %5.1f%% / %3d%%  %7.2f Mit/s",
                 i,
+                nucleo,
                 barra(s.utilization()[i]),
                 s.utilization()[i],
+                args.loads()[i],
                 s.iterationsPerSec()[i] / 1e6)
             );
         }
