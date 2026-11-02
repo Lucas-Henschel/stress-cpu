@@ -30,6 +30,7 @@ public final class StressExecutionController implements AutoCloseable {
     private final Bridge bridge;
     private final Consumer<StressStats> onStats;
     private final Consumer<Throwable> onFailure;
+    private final Runnable onStopped;
     private final DoubleSupplier systemLoad;
     private final ScheduledExecutorService control;
     private final long sampleMillis;
@@ -40,14 +41,24 @@ public final class StressExecutionController implements AutoCloseable {
     private boolean running;
 
     public StressExecutionController(Consumer<StressStats> onStats, Consumer<Throwable> onFailure) {
-        this(new NativeBridge(), onStats, onFailure, StressExecutionController::systemLoad, DEFAULT_SAMPLE_MILLIS);
+        this(onStats, onFailure, () -> { });
+    }
+
+    public StressExecutionController(Consumer<StressStats> onStats, Consumer<Throwable> onFailure, Runnable onStopped) {
+        this(new NativeBridge(), onStats, onFailure, onStopped, StressExecutionController::systemLoad, DEFAULT_SAMPLE_MILLIS);
     }
 
     StressExecutionController(Bridge bridge, Consumer<StressStats> onStats, Consumer<Throwable> onFailure,
                               DoubleSupplier systemLoad, long sampleMillis) {
+        this(bridge, onStats, onFailure, () -> { }, systemLoad, sampleMillis);
+    }
+
+    StressExecutionController(Bridge bridge, Consumer<StressStats> onStats, Consumer<Throwable> onFailure,
+                              Runnable onStopped, DoubleSupplier systemLoad, long sampleMillis) {
         this.bridge = Objects.requireNonNull(bridge, "bridge");
         this.onStats = Objects.requireNonNull(onStats, "onStats");
         this.onFailure = Objects.requireNonNull(onFailure, "onFailure");
+        this.onStopped = Objects.requireNonNull(onStopped, "onStopped");
         this.systemLoad = Objects.requireNonNull(systemLoad, "systemLoad");
         if (sampleMillis < 1) throw new IllegalArgumentException("sampleMillis deve ser positivo");
         this.sampleMillis = sampleMillis;
@@ -61,12 +72,20 @@ public final class StressExecutionController implements AutoCloseable {
     public CompletableFuture<RunStart> start(StressConfiguration configuration) {
         Objects.requireNonNull(configuration, "configuration");
         var result = new CompletableFuture<RunStart>();
+        if (control.isShutdown()) {
+            result.completeExceptionally(new IllegalStateException("O controlador foi encerrado"));
+            return result;
+        }
         control.execute(() -> startOnControlThread(configuration, result));
         return result;
     }
 
     public CompletableFuture<Void> stop() {
         var result = new CompletableFuture<Void>();
+        if (control.isShutdown()) {
+            result.complete(null);
+            return result;
+        }
         control.execute(() -> {
             try {
                 stopOnControlThread();
@@ -130,10 +149,12 @@ public final class StressExecutionController implements AutoCloseable {
             sampling = null;
         }
         bridge.stop();
+        onStopped.run();
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (control.isShutdown()) return;
         stop().join();
         control.shutdown();
     }

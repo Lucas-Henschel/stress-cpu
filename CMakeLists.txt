@@ -151,7 +151,9 @@ if(BUILD_TESTING)
                 -cp "${JAVA_TEST_CLASSPATH}"
                 br.furb.so.stress.gui.DashboardPanelTest)
     add_test(NAME DashboardFrameTest
-        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea
+                "-Djava.library.path=${CMAKE_BINARY_DIR}/lib"
+                -cp "${JAVA_TEST_CLASSPATH}"
                 br.furb.so.stress.gui.DashboardFrameTest)
     add_test(NAME LaunchModeTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"

@@ -21,23 +21,24 @@ public final class DashboardFrameTest {
             SwingUtilities.invokeAndWait(() -> {
                 var frame = new StressDashboardFrame();
                 reference.set(frame);
+                assert find(frame, "execution-error", JLabel.class).getText().isBlank();
                 find(frame, "start", JButton.class).doClick();
-                assert !find(frame, "duration", JTextField.class).isEnabled();
                 lastSample.set(find(frame, "usage-core-0", JProgressBar.class).getString());
             });
             Thread.sleep(1_300);
             SwingUtilities.invokeAndWait(() -> {
                 var frame = reference.get();
+                assert !find(frame, "duration", JTextField.class).isEnabled();
                 assert !lastSample.get().equals(find(frame, "usage-core-0", JProgressBar.class).getString())
                     : "The running timer must deliver new samples";
                 find(frame, "stop", JButton.class).doClick();
-                assert find(frame, "start", JButton.class).isEnabled();
-                assert find(frame, "duration", JTextField.class).getText().isEmpty();
                 lastSample.set(find(frame, "usage-core-0", JProgressBar.class).getString());
             });
             Thread.sleep(750);
             SwingUtilities.invokeAndWait(() -> {
                 var frame = reference.get();
+                assert find(frame, "start", JButton.class).isEnabled();
+                assert find(frame, "duration", JTextField.class).getText().isEmpty();
                 assert lastSample.get().equals(find(frame, "usage-core-0", JProgressBar.class).getString())
                     : "Manual stop must stop sampling";
                 find(frame, "duration", JTextField.class).setText("1");

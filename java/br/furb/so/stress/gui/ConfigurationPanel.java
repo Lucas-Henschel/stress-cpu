@@ -30,11 +30,13 @@ public final class ConfigurationPanel extends JPanel {
     private final JTextField duration = new JTextField();
     private final JLabel selectionSummary = new JLabel();
     private final JLabel validation = new JLabel(" ");
+    private final JLabel executionError = new JLabel(" ");
     private final JButton selectAll = new JButton("Selecionar todos");
     private final JButton clear = new JButton("Limpar");
     private final JButton start = new JButton("Iniciar teste");
     private final JButton stop = new JButton("Parar teste");
     private boolean running;
+    private boolean starting;
 
     public ConfigurationPanel(int coreCount, Runnable onStart, Runnable onStop) {
         if (coreCount < 1) {
@@ -105,6 +107,9 @@ public final class ConfigurationPanel extends JPanel {
         content.add(Box.createVerticalStrut(8));
         validation.setFont(validation.getFont().deriveFont(12f));
         content.add(validation);
+        executionError.setName("execution-error");
+        executionError.setFont(executionError.getFont().deriveFont(12f));
+        content.add(executionError);
         content.add(Box.createVerticalGlue());
         content.add(Box.createVerticalStrut(20));
         JPanel buttons = new JPanel(new GridLayout(1, 2, 8, 0));
@@ -134,12 +139,22 @@ public final class ConfigurationPanel extends JPanel {
 
     public void setRunning(boolean running) {
         this.running = running;
+        this.starting = false;
         cores.forEach(core -> core.setEnabled(!running));
         load.setEnabled(!running);
         duration.setEnabled(!running);
         selectAll.setEnabled(!running);
         clear.setEnabled(!running);
         refreshValidation();
+    }
+
+    public void setStarting(boolean starting) {
+        this.starting = starting;
+        refreshValidation();
+    }
+
+    public void setExecutionError(String message) {
+        executionError.setText(message == null || message.isBlank() ? " " : message);
     }
 
     private OptionalInt readDuration() {
@@ -173,7 +188,7 @@ public final class ConfigurationPanel extends JPanel {
             message = invalid.getMessage();
         }
         validation.setText(message);
-        start.setEnabled(!running && valid);
+        start.setEnabled(!running && !starting && valid);
         stop.setEnabled(running);
     }
 
