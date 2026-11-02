@@ -1,3 +1,9 @@
+/* _GNU_SOURCE antes de qualquer include: o CMake compila com -std=c11 sem
+   extensoes, e sem esta macro a glibc esconde as APIs POSIX (CLOCK_MONOTONIC,
+   CLOCK_THREAD_CPUTIME_ID, nanosleep) e as GNU (cpu_set_t,
+   pthread_setaffinity_np). No macOS ela e inofensiva. */
+#define _GNU_SOURCE
+
 #include "platform.h"
 
 #include <errno.h>
@@ -7,6 +13,10 @@
 
 #ifdef __APPLE__
 #include <mach/mach.h>
+#endif
+
+#ifdef __linux__
+#include <sched.h>
 #endif
 
 int platform_cpu_count(void) {
@@ -84,6 +94,28 @@ int platform_thread_create(platform_thread_t *out, platform_thread_fn fn, void *
 
 int platform_thread_join(platform_thread_t t) {
     return pthread_join(t, NULL);
+}
+
+int platform_pin_current_thread(int cpu) {
+#ifdef __linux__
+    if (cpu < 0 || cpu >= CPU_SETSIZE) return PLATFORM_PIN_FAILED;
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    CPU_SET(cpu, &set);
+    /* Falha com EINVAL se o nucleo estiver offline ou fora do cpuset do
+       processo (taskset, cgroups de container): o pedido nao pode ser
+       cumprido, e isso e erro, nao "sem suporte". */
+    return pthread_setaffinity_np(pthread_self(), sizeof(set), &set) == 0
+         ? PLATFORM_PIN_OK
+         : PLATFORM_PIN_FAILED;
+#else
+    /* macOS nao tem afinidade rigida. A unica API, THREAD_AFFINITY_POLICY, e
+       uma DICA que agrupa threads por "tag" -- nao escolhe o nucleo -- e nem
+       existe no Apple Silicon (devolve KERN_NOT_SUPPORTED). Fingir que fixou
+       seria mentir na tela; o motor segue sem fixar e o Java avisa. */
+    (void)cpu;
+    return PLATFORM_PIN_UNSUPPORTED;
+#endif
 }
 
 void platform_enable_vt_mode(void) {
