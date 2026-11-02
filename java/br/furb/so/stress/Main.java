@@ -1,6 +1,7 @@
 package br.furb.so.stress;
 
 import br.furb.so.stress.cli.Args;
+import br.furb.so.stress.gui.GuiMain;
 import br.furb.so.stress.metrics.StressStats;
 import br.furb.so.stress.jni.CpuStress;
 import br.furb.so.stress.ui.ConsoleRenderer;
@@ -19,6 +20,16 @@ public final class Main {
     private static final AtomicBoolean encerrado = new AtomicBoolean(false);
 
     public static void main(String[] argv) throws InterruptedException {
+        LaunchMode mode = LaunchMode.parse(argv);
+        if (!mode.console()) {
+            GuiMain.main(mode.applicationArgs().toArray(String[]::new));
+            return;
+        }
+
+        executarConsole(mode.applicationArgs().toArray(String[]::new));
+    }
+
+    private static void executarConsole(String[] argv) throws InterruptedException {
         int cpus = CpuStress.cpuCount();
 
         Args args;

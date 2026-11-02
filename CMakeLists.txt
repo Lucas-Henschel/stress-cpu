@@ -55,6 +55,14 @@ find_package(JNI REQUIRED)
 
 set(JAVA_SRC_DIR ${CMAKE_SOURCE_DIR}/java)
 set(GEN_DIR ${CMAKE_BINARY_DIR}/generated)
+set(FLATLAF_VERSION "3.7.2")
+set(FLATLAF_JAR "${CMAKE_SOURCE_DIR}/lib/flatlaf-${FLATLAF_VERSION}.jar")
+
+if(WIN32)
+    set(JAVA_CLASSPATH_SEPARATOR ";")
+else()
+    set(JAVA_CLASSPATH_SEPARATOR ":")
+endif()
 
 # Gera o header JNI a partir de CpuStress.java antes de compilar a ponte.
 add_custom_command(
@@ -98,9 +106,67 @@ file(GLOB_RECURSE JAVA_SOURCES CONFIGURE_DEPENDS
 add_custom_target(java ALL
     COMMAND ${Java_JAVAC_EXECUTABLE}
             -encoding UTF-8
+            -cp "${FLATLAF_JAR}"
             -d ${CMAKE_BINARY_DIR}/classes
             ${JAVA_SOURCES}
-    DEPENDS ${JAVA_SOURCES}
+    DEPENDS ${JAVA_SOURCES} "${FLATLAF_JAR}"
+    VERBATIM
     COMMENT "Compilando classes Java")
 
 add_dependencies(java jni_header)
+
+include(CTest)
+if(BUILD_TESTING)
+    file(GLOB_RECURSE JAVA_TEST_SOURCES CONFIGURE_DEPENDS
+         ${CMAKE_SOURCE_DIR}/test/java/*.java)
+    set(JAVA_TEST_CLASSES_DIR "${CMAKE_BINARY_DIR}/test-classes")
+    set(JAVA_TEST_CLASSPATH
+        "${CMAKE_BINARY_DIR}/classes${JAVA_CLASSPATH_SEPARATOR}${JAVA_TEST_CLASSES_DIR}")
+
+    add_custom_target(java_tests ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${JAVA_TEST_CLASSES_DIR}"
+        COMMAND ${Java_JAVAC_EXECUTABLE}
+                -encoding UTF-8
+                -cp "${CMAKE_BINARY_DIR}/classes"
+                -d "${JAVA_TEST_CLASSES_DIR}"
+                ${JAVA_TEST_SOURCES}
+        DEPENDS java ${JAVA_TEST_SOURCES}
+        VERBATIM
+        COMMENT "Compilando testes Java")
+
+    add_test(NAME StressConfigurationTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.model.StressConfigurationTest)
+    add_test(NAME MockStressDataSourceTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.mock.MockStressDataSourceTest)
+    add_test(NAME RealStressMetricsTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.model.RealStressMetricsTest)
+    add_test(NAME StressExecutionControllerTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.StressExecutionControllerTest)
+    add_test(NAME DashboardPanelTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -Djava.awt.headless=true
+                -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.DashboardPanelTest)
+    add_test(NAME DashboardFrameTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea
+                "-Djava.library.path=${CMAKE_BINARY_DIR}/lib"
+                -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.DashboardFrameTest)
+    add_test(NAME LaunchModeTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.LaunchModeTest)
+    set_tests_properties(DashboardFrameTest PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 20)
+endif()
+
+add_custom_target(run_gui
+    COMMAND ${Java_JAVA_EXECUTABLE}
+            "-Djava.library.path=${CMAKE_BINARY_DIR}/lib"
+            -cp "${CMAKE_BINARY_DIR}/classes${JAVA_CLASSPATH_SEPARATOR}${FLATLAF_JAR}"
+            br.furb.so.stress.gui.GuiMain
+    DEPENDS java cpustress
+    USES_TERMINAL
+    VERBATIM
+    COMMENT "Iniciando interface grafica")

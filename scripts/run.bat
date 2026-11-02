@@ -15,4 +15,4 @@ if errorlevel 1 (
     exit /b 1
 )
 
-java -Dstdout.encoding=UTF-8 -cp "%DIR%\build\classes" -Djava.library.path="%DIR%\build\lib" br.furb.so.stress.Main %*
+java -Dstdout.encoding=UTF-8 -cp "%DIR%\build\classes;%DIR%\lib\flatlaf-3.7.2.jar" -Djava.library.path="%DIR%\build\lib" br.furb.so.stress.Main %*
