@@ -117,6 +117,31 @@ recusado e código de saída **1**.
 Pressione **Ctrl+C** para encerrar a qualquer momento — um shutdown hook para
 as threads nativas antes do processo sair (ver "Encerramento e Ctrl+C").
 
+### Precisão da carga (`--load`)
+
+A cada janela de 100 ms, cada thread gasta a sua cota de **tempo de CPU** e dorme
+o resto. O que passar da cota, como o último lote de trabalho ou um sono mais
+longo que o pedido, é descontado da janela seguinte, então o erro não se acumula.
+Tempo em que a thread ficou sem CPU não gasta a cota, e por isso a carga se mantém
+mesmo com outros programas disputando o núcleo.
+
+Medido no Linux com uma thread fixada num núcleo, pelo contador de CPU do kernel
+(`/proc/<pid>/task/<tid>/schedstat`), em janelas de 5 s:
+
+| Alvo | 1% | 5% | 10% | 25% | 50% | 75% | 90% | 99% | 100% |
+|---|---|---|---|---|---|---|---|---|---|
+| Medido | 1,00% | 5,07% | 9,96% | 25,35% | 49,80% | 74,70% | 89,39% | 98,78% | 99,88% |
+
+O alvo vale para a **thread**, não para o núcleo inteiro. O Gerenciador de Tarefas
+e o `htop` mostram também o que os outros programas e o próprio SO usam naquele
+núcleo, então lá o número pode passar do alvo. O programa controla só a parte
+dele, e não há como chegar abaixo do que já estava em uso. Pelo mesmo motivo, a
+thread só alcança 100% se ninguém de prioridade maior estiver usando o núcleo.
+
+Se a CPU não comportar todos os alvos, como em `--threads` acima do número de
+núcleos, cada thread fica com o que o escalonador der e a medida sai abaixo do
+alvo.
+
 ## Compilação manual
 
 Só é necessária para compilar sem executar; `scripts/run.sh` já faz isso
@@ -217,22 +242,23 @@ motor, a ponte JNI e o Java inteiro são os mesmos nos três.
 |---|---|---|---|
 | Linux | `platform_posix.c` | `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` | `pthread_setaffinity_np` |
 | macOS | `platform_posix.c`, blocos `#ifdef __APPLE__` | `thread_info()` do Mach — o macOS não tem `CLOCK_THREAD_CPUTIME_ID` | não suportada (ver abaixo) |
-| Windows | `platform_win.c` | `GetThreadTimes` | `SetThreadAffinityMask` |
+| Windows | `platform_win.c` | `QueryThreadCycleTime`, convertido para ns | `SetThreadAffinityMask` |
 
 O desenvolvimento e as medições foram feitos em macOS; Linux e Windows.
 
-No Windows, o `GetThreadTimes` tem resolução de ~15,6 ms (o tick do
-escalonador), então a utilização por thread sai em degraus e traz até ~1,5%
-de ruído em janelas de amostragem de 1 s. É característica da API do sistema,
-não do programa.
+No Windows, o `GetThreadTimes` não serve para o tempo de CPU por thread: ele tem
+resolução de ~15,6 ms (o tick do escalonador) e não enxerga rajadas curtas. O
+contador de ciclos não tem esse problema, mas o Windows não informa a taxa dele,
+então o programa a mede uma vez por processo, girando ~10 ms contra o relógio
+monotônico.
 
 ## Limitações conhecidas
 
 - **A utilização por thread é limitada a `[0, 100]` na exibição.** O
   numerador (`Δcpu`) pode ultrapassar o denominador (`Δreal`) por duas causas
   independentes: uma janela de corrida no motor nativo entre o registro do
-  fim do teste e o último incremento de um worker, e a granularidade do
-  `GetThreadTimes` no Windows.
+  fim do teste e o último incremento de um worker, e o fato de o tempo de CPU
+  ser publicado a cada lote, fora de sincronia com a amostra.
 - **A carga do sistema (`Sistema: NN%`) depende do HotSpot.** Ela vem de
   `com.sun.management.OperatingSystemMXBean`, presente no HotSpot mas não
   garantida por outras JVMs; sem ela, o renderer exibe `--`. A primeira

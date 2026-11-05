@@ -22,7 +22,9 @@ int platform_cpu_count(void);
 uint64_t platform_monotonic_ns(void);
 
 /* Tempo de CPU (usuário + sistema) consumido pela THREAD CORRENTE, em ns.
-   DEVE ser chamada pela própria thread cujo tempo se deseja medir. */
+   DEVE ser chamada pela própria thread cujo tempo se deseja medir. O duty cycle
+   do motor depende desta leitura para dosar a carga, então a resolução precisa
+   ser bem menor que a cota de 1 ms de --load=1. */
 uint64_t platform_thread_cpu_ns(void);
 
 /* Suspende a thread corrente por ao menos `ms` milissegundos. */

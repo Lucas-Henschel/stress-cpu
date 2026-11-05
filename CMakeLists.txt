@@ -158,6 +158,11 @@ if(BUILD_TESTING)
     add_test(NAME LaunchModeTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
                 br.furb.so.stress.LaunchModeTest)
+    add_test(NAME CpuStressDutyCycleTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea
+                "-Djava.library.path=${CMAKE_BINARY_DIR}/lib"
+                -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.jni.CpuStressDutyCycleTest)
     set_tests_properties(DashboardFrameTest PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 20)
 endif()
 

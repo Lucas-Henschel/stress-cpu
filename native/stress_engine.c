@@ -6,10 +6,12 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-/* Iteracoes por lote. A flag de parada e lida uma vez por lote, nao por
-   iteracao: ler um atomico a cada iteracao destruiria a vazao. A latencia
-   de parada resultante e de um lote (< 1ms). */
-#define BATCH 100000
+/* Iteracoes por lote. A flag de parada e o relogio de CPU sao lidos uma vez por
+   lote, nao por iteracao: le-los a cada iteracao destruiria a vazao. O lote e
+   tambem a menor porcao de trabalho que o duty cycle consegue dosar, entao
+   precisa caber com folga na cota de --load=1 (1 ms por janela): 2000 iteracoes
+   levam ~0,1 ms. */
+#define BATCH 2000
 
 /* _Alignas(64) evita false sharing: sem ele, contadores de threads distintas
    compartilhariam a mesma linha de cache, e cada fetch_add invalidaria a
@@ -95,23 +97,51 @@ static void marcar_transicao(void) {
     atomic_fetch_add_explicit(&g_generation, 1u, memory_order_acq_rel);
 }
 
-#define DUTY_WINDOW_MS 100
+#define DUTY_WINDOW_NS (100ull * 1000000ull)
 
-static void duty_cycle_pause(worker_t *w, uint64_t *inicio_janela) {
+/* Estado do duty cycle de uma worker; so ela o toca.
+   fim_janela  instante, no relogio monotonico, em que a janela atual termina.
+   alvo_cpu    tempo de CPU da thread em que a cota acumulada se esgota. */
+typedef struct {
+    uint64_t fim_janela;
+    uint64_t alvo_cpu;
+} duty_t;
+
+/* Em cada janela a thread gasta a sua cota de CPU e dorme o resto. O controle
+   usa o tempo de CPU da thread, nao o relogio de parede: tempo preemptado nao e
+   trabalho e nao pode consumir a cota.
+
+   A cota e cumulativa: alvo_cpu avanca apenas com o tempo que passou. Assim o
+   excesso do ultimo lote, o custo de dormir e acordar e um sono mais longo que
+   o pedido (Sleep no Windows tem degraus de ~15,6 ms) saem da janela seguinte,
+   em vez de virarem erro permanente. */
+static void duty_cycle_pause(const worker_t *w, duty_t *d, uint64_t cpu) {
     if (w->load_pct >= 100) return;
 
     uint64_t agora = platform_monotonic_ns();
-    uint64_t trabalho_ns = agora - *inicio_janela;
-    uint64_t alvo_ns = (uint64_t)DUTY_WINDOW_MS * 1000000ull
-                     * (uint64_t)w->load_pct / 100ull;
+    if (cpu < d->alvo_cpu && agora < d->fim_janela) return;
 
-    if (trabalho_ns < alvo_ns) return;
-
-    uint64_t janela_ns = (uint64_t)DUTY_WINDOW_MS * 1000000ull;
-    if (trabalho_ns < janela_ns) {
-        platform_sleep_ms((int)((janela_ns - trabalho_ns) / 1000000ull));
+    if (agora < d->fim_janela) {
+        platform_sleep_ms((int)((d->fim_janela - agora) / 1000000ull));
+        agora = platform_monotonic_ns();
     }
-    *inicio_janela = platform_monotonic_ns();
+
+    /* A janela nova comeca onde a anterior terminou, mesmo que o sono tenha
+       acordado antes (ele arredonda para baixo): contar a partir de `agora`
+       daria cota duas vezes pelo mesmo intervalo. */
+    uint64_t inicio = (agora > d->fim_janela) ? agora : d->fim_janela;
+    uint64_t fim = inicio + DUTY_WINDOW_NS;
+    d->alvo_cpu += (fim - d->fim_janela) * (uint64_t)w->load_pct / 100ull;
+    d->fim_janela = fim;
+
+    /* Quando outro processo toma a CPU, a cota nao gasta se acumula. O credito
+       fica limitado, senao a thread rodaria a 100% por muito tempo ao ser
+       liberada, para pagar uma divida antiga. O limite e de duas janelas porque
+       uma janela so consome uma: com limite de uma, nao sobraria credito para
+       repor um sono longo demais, e --load=99 mediria ~94% no Windows. */
+    if (d->alvo_cpu > cpu + 2 * DUTY_WINDOW_NS) {
+        d->alvo_cpu = cpu + 2 * DUTY_WINDOW_NS;
+    }
 }
 
 static void worker_main(void *arg) {
@@ -141,7 +171,6 @@ static void worker_main(void *arg) {
        (P-core vs. E-core, contencao, etc.), que e o que a spec pede.
        NAO "melhore" isto voltando a variar por thread. */
     double x = 1.0;
-    uint64_t inicio_janela = platform_monotonic_ns();
 
     /* A fixacao acontece aqui, na propria thread e antes do primeiro lote:
        assim nenhuma iteracao roda fora do nucleo pedido, e a camada de
@@ -150,6 +179,11 @@ static void worker_main(void *arg) {
                             : PLATFORM_PIN_OK;
     atomic_store_explicit(&w->pin_status, pin, memory_order_release);
     if (pin == PLATFORM_PIN_FAILED) return;   /* stress_start() desfaz tudo */
+
+    duty_t duty;
+    duty.fim_janela = platform_monotonic_ns() + DUTY_WINDOW_NS;
+    duty.alvo_cpu = platform_thread_cpu_ns()
+                  + DUTY_WINDOW_NS * (uint64_t)w->load_pct / 100ull;
 
     while (atomic_load_explicit(&g_running, memory_order_relaxed)) {
         for (int i = 0; i < BATCH; i++) {
@@ -165,12 +199,12 @@ static void worker_main(void *arg) {
         }
         sink += x;
 
-        atomic_store_explicit(&w->cpu_ns, platform_thread_cpu_ns(),
-                              memory_order_relaxed);
+        uint64_t cpu = platform_thread_cpu_ns();
+        atomic_store_explicit(&w->cpu_ns, cpu, memory_order_relaxed);
         atomic_fetch_add_explicit(&w->iterations, (uint_fast64_t)BATCH,
                                   memory_order_relaxed);
 
-        duty_cycle_pause(w, &inicio_janela);
+        duty_cycle_pause(w, &duty, cpu);
     }
     (void)sink;
 }
@@ -265,6 +299,10 @@ int stress_start(int n_threads, const int *cpus, const int *loads,
     platform_thread_t *threads = (platform_thread_t *)calloc(
         (size_t)n_threads, sizeof(platform_thread_t));
     if (threads == NULL) return STRESS_ERR_THREAD;
+
+    /* No Windows a primeira leitura calibra o relogio de CPU girando alguns ms.
+       Feita aqui, evita que todas as workers calibrem juntas, disputando nucleo. */
+    (void)platform_thread_cpu_ns();
 
     marcar_transicao();                /* geracao impar: troca em curso */
 

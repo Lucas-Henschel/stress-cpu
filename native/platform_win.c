@@ -43,26 +43,53 @@ uint64_t platform_monotonic_ns(void) {
     return seg * 1000000000ull + (resto * 1000000000ull) / freq;
 }
 
+/* Taxa de QueryThreadCycleTime, medida uma vez por processo. Zero e o sentinela
+   de "ainda nao medida". _Atomic pelo mesmo motivo de g_qpc_freq. */
+static _Atomic uint64_t g_ciclos_por_ms = 0;
+
+/* O Windows nao informa a taxa do contador de ciclos, entao ela e medida girando
+   contra o relogio monotonico. Fica o maior de varios giros curtos: uma preempcao
+   no meio de um giro so pode reduzir a taxa medida, nunca aumenta-la. */
+static uint64_t medir_ciclos_por_ms(void) {
+    uint64_t melhor = 0;
+    for (int i = 0; i < 5; i++) {
+        ULONG64 antes, depois;
+        uint64_t t0 = platform_monotonic_ns();
+        if (!QueryThreadCycleTime(GetCurrentThread(), &antes)) return 0;
+        while (platform_monotonic_ns() - t0 < 2000000ull) {
+        }
+        if (!QueryThreadCycleTime(GetCurrentThread(), &depois)) return 0;
+        uint64_t taxa = (uint64_t)(depois - antes) * 1000000ull
+                      / (platform_monotonic_ns() - t0);
+        if (taxa > melhor) melhor = taxa;
+    }
+    return melhor;
+}
+
+/* GetThreadTimes nao serve aqui: so avanca quando o tick do escalonador (~15,6 ms)
+   encontra a thread rodando. Uma rajada de 1 ms que acorda logo depois de um tick
+   e dorme antes do proximo nunca seria contada, e o duty cycle dosaria no escuro.
+   QueryThreadCycleTime conta os ciclos da propria thread, em modo usuario e kernel.
+
+   A documentacao avisa que a taxa do contador varia conforme a CPU; nas CPUs com
+   TSC invariante, que sao todas as atuais, ela e fixa. */
 uint64_t platform_thread_cpu_ns(void) {
-    FILETIME criacao, saida, kernel, usuario;
-    if (!GetThreadTimes(GetCurrentThread(), &criacao, &saida, &kernel,
-                        &usuario)) {
-        return 0;
+    uint64_t taxa = atomic_load_explicit(&g_ciclos_por_ms, memory_order_relaxed);
+    if (taxa == 0) {
+        taxa = medir_ciclos_por_ms();
+        if (taxa == 0) return 0;
+        atomic_store_explicit(&g_ciclos_por_ms, taxa, memory_order_relaxed);
     }
 
-    /* FILETIME nao e alinhado para acesso de 64 bits; copiar pelos campos via
-       ULARGE_INTEGER e a forma documentada de le-lo. */
-    ULARGE_INTEGER k, u;
-    k.LowPart = kernel.dwLowDateTime;
-    k.HighPart = kernel.dwHighDateTime;
-    u.LowPart = usuario.dwLowDateTime;
-    u.HighPart = usuario.dwHighDateTime;
+    ULONG64 ciclos;
+    if (!QueryThreadCycleTime(GetCurrentThread(), &ciclos)) return 0;
 
-    /* Unidades de 100 ns. A resolucao REAL e o tick do escalonador (~15,6 ms):
-       o valor so muda quando o tick encontra a thread rodando, entao amostras
-       curtas saem em degraus, nao suaves. Ver "Limitacoes conhecidas" no
-       README — e por isso que StressStats limita a utilizacao a [0, 100]. */
-    return (uint64_t)(k.QuadPart + u.QuadPart) * 100ull;
+    /* Separa milissegundos do resto antes de multiplicar, como em
+       platform_monotonic_ns: ciclos * 1e6 estoura uint64 com cerca de uma hora
+       de CPU a 4 GHz. */
+    uint64_t ms = (uint64_t)ciclos / taxa;
+    uint64_t resto = (uint64_t)ciclos % taxa;
+    return ms * 1000000ull + (resto * 1000000ull) / taxa;
 }
 
 void platform_sleep_ms(int ms) {
