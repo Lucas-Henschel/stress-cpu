@@ -53,8 +53,10 @@ Se for antiga demais, use o instalador oficial do link acima ou o
 ## Executando
 
 ```bash
-./scripts/run.sh [opções]        # Linux / macOS
-scripts\run.bat [opções]         # Windows
+./scripts/run.sh                  # GUI (Linux / macOS)
+./scripts/run.sh --console [opções]
+scripts\run.bat                   # GUI (Windows)
+scripts\run.bat --console [opções]
 ```
 
 Um único comando compila e executa — não é necessário rodar o CMake antes. O
@@ -64,13 +66,17 @@ erros e sai com código **1** sem chegar ao `java`, para que o erro real
 apareça em vez de um `UnsatisfiedLinkError` ou de classes desatualizadas
 rodando em silêncio.
 
+Sem argumentos, a aplicação abre o dashboard gráfico. Para usar os argumentos
+da linha de comando descritos abaixo, acrescente `--console`; no dashboard,
+núcleos, carga e duração são configurados diretamente pela interface.
+
 O script resolve os próprios caminhos a partir de `dirname "$0"`, então
 funciona de qualquer diretório de trabalho, e repassa todos os argumentos
 para a aplicação. A saída do compilador vai para `build/last-build.log` em
 vez da tela — ela rolaria o terminal no instante em que o renderer ANSI
 desenha o primeiro quadro — e só é exibida se o build falhar.
 
-### Argumentos
+### Argumentos do modo console
 
 | Argumento | Padrão | Faixa | Efeito |
 |---|---|---|---|
@@ -85,11 +91,12 @@ erro seguida do texto de uso, e encerra com código de saída **2**.
 ### Exemplos
 
 ```bash
-./scripts/run.sh                              # satura todos os nucleos
-./scripts/run.sh --load=50                    # mantem a CPU em ~50%
-./scripts/run.sh --threads=40 --duration=10s  # oversubscription por 10s
-./scripts/run.sh --cores=0,2 --load=80,30     # nucleo 0 a 80%, nucleo 2 a 30%
-./scripts/run.sh --cores=1-3 --load=50        # nucleos 1, 2 e 3 a 50%
+./scripts/run.sh                              # abre o dashboard gráfico
+./scripts/run.sh --console                    # satura todos os núcleos no terminal
+./scripts/run.sh --console --load=50          # mantém a CPU em ~50%
+./scripts/run.sh --console --threads=40 --duration=10s  # oversubscription por 10s
+./scripts/run.sh --console --cores=0,2 --load=80,30     # núcleo 0 a 80%, núcleo 2 a 30%
+./scripts/run.sh --console --cores=1-3 --load=50        # núcleos 1, 2 e 3 a 50%
 ```
 
 No **PowerShell**, a vírgula é o operador de array e quebra o argumento em
@@ -97,7 +104,7 @@ dois antes de ele chegar ao programa. Coloque entre aspas os argumentos que
 têm vírgula (no `cmd` não é preciso):
 
 ```powershell
-.\scripts\run.bat "--cores=0,2" "--load=80,30"
+.\scripts\run.bat --console "--cores=0,2" "--load=80,30"
 ```
 
 ### Escolhendo núcleos (`--cores`)
