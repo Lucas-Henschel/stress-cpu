@@ -1,4 +1,4 @@
-package br.furb.so.stress.gui;
+package br.furb.so.stress.gui.view;
 
 import br.furb.so.stress.gui.model.CoreMetric;
 import java.awt.Component;

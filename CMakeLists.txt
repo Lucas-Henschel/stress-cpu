@@ -145,16 +145,16 @@ if(BUILD_TESTING)
                 br.furb.so.stress.gui.model.RealStressMetricsTest)
     add_test(NAME StressExecutionControllerTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
-                br.furb.so.stress.gui.StressExecutionControllerTest)
+                br.furb.so.stress.gui.controller.StressExecutionControllerTest)
     add_test(NAME DashboardPanelTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -Djava.awt.headless=true
                 -cp "${JAVA_TEST_CLASSPATH}"
-                br.furb.so.stress.gui.DashboardPanelTest)
+                br.furb.so.stress.gui.view.DashboardPanelTest)
     add_test(NAME DashboardFrameTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea
                 "-Djava.library.path=${CMAKE_BINARY_DIR}/lib"
                 -cp "${JAVA_TEST_CLASSPATH}"
-                br.furb.so.stress.gui.DashboardFrameTest)
+                br.furb.so.stress.gui.view.DashboardFrameTest)
     add_test(NAME LaunchModeTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
                 br.furb.so.stress.LaunchModeTest)
@@ -170,7 +170,7 @@ add_custom_target(run_gui
     COMMAND ${Java_JAVA_EXECUTABLE}
             "-Djava.library.path=${CMAKE_BINARY_DIR}/lib"
             -cp "${CMAKE_BINARY_DIR}/classes${JAVA_CLASSPATH_SEPARATOR}${FLATLAF_JAR}"
-            br.furb.so.stress.gui.GuiMain
+            br.furb.so.stress.gui.view.GuiMain
     DEPENDS java cpustress
     USES_TERMINAL
     VERBATIM

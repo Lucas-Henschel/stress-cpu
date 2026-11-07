@@ -1,4 +1,4 @@
-package br.furb.so.stress.gui;
+package br.furb.so.stress.gui.view;
 
 import java.awt.GraphicsEnvironment;
 import java.util.concurrent.atomic.AtomicReference;

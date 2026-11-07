@@ -1,5 +1,6 @@
-package br.furb.so.stress.gui;
+package br.furb.so.stress.gui.view;
 
+import br.furb.so.stress.gui.controller.StressExecutionController;
 import br.furb.so.stress.gui.model.RealStressMetrics;
 import br.furb.so.stress.gui.model.StressConfiguration;
 import br.furb.so.stress.metrics.StressStats;

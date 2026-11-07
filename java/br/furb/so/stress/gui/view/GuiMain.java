@@ -1,4 +1,4 @@
-package br.furb.so.stress.gui;
+package br.furb.so.stress.gui.view;
 
 import com.formdev.flatlaf.FlatLightLaf;
 

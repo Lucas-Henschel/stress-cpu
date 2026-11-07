@@ -1,7 +1,7 @@
 package br.furb.so.stress;
 
 import br.furb.so.stress.cli.Args;
-import br.furb.so.stress.gui.GuiMain;
+import br.furb.so.stress.gui.view.GuiMain;
 import br.furb.so.stress.metrics.StressStats;
 import br.furb.so.stress.jni.CpuStress;
 import br.furb.so.stress.ui.ConsoleRenderer;

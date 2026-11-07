@@ -1,4 +1,4 @@
-package br.furb.so.stress.gui;
+package br.furb.so.stress.gui.controller;
 
 import br.furb.so.stress.gui.model.StressConfiguration;
 import br.furb.so.stress.jni.CpuStress;
