@@ -1,6 +1,7 @@
 package br.furb.so.stress.gui.view;
 
 import br.furb.so.stress.gui.model.CoreMetric;
+import br.furb.so.stress.gui.model.StressMode;
 import java.awt.Component;
 import java.awt.Container;
 import java.util.List;
@@ -8,6 +9,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JProgressBar;
 import javax.swing.JSlider;
@@ -19,6 +21,7 @@ public final class DashboardPanelTest {
     public static void main(String[] args) throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             validatesConfigurationAndPreservesValuesAfterStop();
+            selectsModeAndValidatesParityFilters();
             updatesMetricsAndClearsCoresMissingFromTheNextSample();
             describesRealMonitoringAndAffinity();
             supportsManyLogicalProcessors();
@@ -70,6 +73,40 @@ public final class DashboardPanelTest {
         assert first.isEnabled() && second.isEnabled();
         assert duration.isEnabled() && load.isEnabled();
         assert panel.readConfiguration().equals(before) : "Stopping must preserve the inputs";
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void selectsModeAndValidatesParityFilters() {
+        var panel = new ConfigurationPanel(4, () -> { }, () -> { });
+        var mode = (JComboBox<StressMode>) find(panel, "mode", JComboBox.class);
+        var start = find(panel, "start", JButton.class);
+        var validation = find(panel, "validation", JLabel.class);
+        assert mode.getItemCount() == 4;
+        assert panel.readConfiguration().mode() == StressMode.TODOS : "Default mode must be Todos";
+
+        mode.setSelectedItem(StressMode.PARES);
+        assert panel.readConfiguration().mode() == StressMode.PARES;
+        assert start.isEnabled();
+        find(panel, "core-0", JCheckBox.class).doClick();
+        find(panel, "core-2", JCheckBox.class).doClick();
+        assert !start.isEnabled() : "Pares without even cores must prevent starting";
+        assert !validation.getText().isBlank() && validation.getText().contains("Pares");
+
+        mode.setSelectedItem(StressMode.IMPARES);
+        assert start.isEnabled() : "Odd cores 1 and 3 remain selected";
+        find(panel, "core-1", JCheckBox.class).doClick();
+        find(panel, "core-3", JCheckBox.class).doClick();
+        find(panel, "core-0", JCheckBox.class).doClick();
+        assert !start.isEnabled() : "Ímpares without odd cores must prevent starting";
+
+        mode.setSelectedItem(StressMode.CIRCULAR);
+        assert start.isEnabled() : "Circular accepts any non-empty selection";
+        assert panel.readConfiguration().mode() == StressMode.CIRCULAR;
+
+        panel.setRunning(true);
+        assert !mode.isEnabled();
+        panel.setRunning(false);
+        assert mode.isEnabled();
     }
 
     private static void updatesMetricsAndClearsCoresMissingFromTheNextSample() {
