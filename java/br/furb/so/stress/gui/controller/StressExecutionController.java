@@ -210,7 +210,13 @@ public final class StressExecutionController implements AutoCloseable {
             long[] current = new long[2 + 2 * activeCoreCount];
             bridge.snapshot(current);
             if (current[1] == 0) return;
-            if (previous != null) onStats.accept(StressStats.delta(previous, current, systemLoad.getAsDouble()));
+            if (previous != null) {
+                StressStats delta = StressStats.delta(previous, current, systemLoad.getAsDouble());
+                // O relogio nativo reinicia a cada troca circular; o tempo exibido segue o da execucao inteira.
+                long elapsedMillis = (System.nanoTime() - startedNanos) / 1_000_000L;
+                onStats.accept(new StressStats(elapsedMillis, delta.threadCount(), delta.utilization(),
+                    delta.iterationsPerSec(), delta.systemLoad()));
+            }
             previous = current;
             if (configuration.durationSeconds().isPresent()
                 && System.nanoTime() - startedNanos >= configuration.durationSeconds().getAsInt() * 1_000_000_000L) {

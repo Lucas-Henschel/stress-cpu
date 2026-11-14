@@ -22,6 +22,7 @@ public final class StressExecutionControllerTest {
         circularRotatesOneCoreAtATimeWithoutOverlap();
         circularWithSingleCoreKeepsRunning();
         circularStopCancelsRotationAndStopsOnce();
+        circularElapsedTimeKeepsGrowingAcrossRotations();
         System.out.println("StressExecutionControllerTest passed");
     }
 
@@ -144,6 +145,23 @@ public final class StressExecutionControllerTest {
         assert bridge.stopCalls.get() == bridge.startCalls.get() : "close must not stop twice";
     }
 
+    private static void circularElapsedTimeKeepsGrowingAcrossRotations() throws Exception {
+        var bridge = new FakeBridge(false);
+        var active = new CopyOnWriteArrayList<Set<Integer>>();
+        var elapsed = new CopyOnWriteArrayList<Long>();
+        try (var controller = new StressExecutionController(bridge, stats -> elapsed.add(stats.elapsedMillis()),
+            failure -> { throw new AssertionError(failure); }, () -> { }, active::add, () -> 0.1, 10, 60)) {
+            controller.start(new StressConfiguration(Set.of(0, 1), 50, OptionalInt.empty(), StressMode.CIRCULAR)).join();
+            await(() -> active.size() >= 3, "Expected two rotations");
+            Thread.sleep(60);
+            controller.stop().join();
+        }
+        for (int i = 1; i < elapsed.size(); i++) {
+            assert elapsed.get(i) >= elapsed.get(i - 1) : "Elapsed time went backwards: " + elapsed;
+        }
+        assert elapsed.get(elapsed.size() - 1) >= 100 : "Elapsed must span rotations: " + elapsed;
+    }
+
     private static StressExecutionController controller(FakeBridge bridge, List<Set<Integer>> active,
                                                         long sampleMillis, long circularMillis) {
         return new StressExecutionController(bridge, stats -> { }, failure -> {
@@ -186,6 +204,7 @@ public final class StressExecutionControllerTest {
             recordThread();
             this.cores = cores.clone();
             this.loads = loads.clone();
+            elapsed = 0; // the native clock restarts with each engine
             startedCores.add(cores.clone());
             maxConcurrentRuns = Math.max(maxConcurrentRuns, ++running);
             startCalls.incrementAndGet();
