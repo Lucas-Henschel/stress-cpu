@@ -8,10 +8,16 @@ import java.util.Set;
 public record StressConfiguration(
     Set<Integer> selectedCores,
     int loadPercent,
-    OptionalInt durationSeconds
+    OptionalInt durationSeconds,
+    StressMode mode
 ) {
+    public StressConfiguration(Set<Integer> selectedCores, int loadPercent, OptionalInt durationSeconds) {
+        this(selectedCores, loadPercent, durationSeconds, StressMode.TODOS);
+    }
+
     public StressConfiguration {
         selectedCores = Set.copyOf(selectedCores);
+        Objects.requireNonNull(mode, "mode");
         Objects.requireNonNull(durationSeconds, "durationSeconds");
         if (selectedCores.isEmpty() || selectedCores.stream().anyMatch(core -> core < 0)) {
             throw new IllegalArgumentException("Selecione ao menos um nucleo com indice nao negativo");
