@@ -1,6 +1,8 @@
 package br.furb.so.stress.gui.view;
 
+import br.furb.so.stress.metrics.StressStats;
 import java.awt.GraphicsEnvironment;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.swing.JButton;
 import javax.swing.JLabel;
@@ -25,6 +27,7 @@ public final class DashboardFrameTest {
                 find(frame, "start", JButton.class).doClick();
                 lastSample.set(find(frame, "usage-core-0", JProgressBar.class).getString());
             });
+            SwingUtilities.invokeAndWait(DashboardFrameTest::circularMetricsFollowTheActiveCore);
             Thread.sleep(1_300);
             SwingUtilities.invokeAndWait(() -> {
                 var frame = reference.get();
@@ -69,6 +72,31 @@ public final class DashboardFrameTest {
             });
         }
         System.out.println("DashboardFrameTest passed");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void circularMetricsFollowTheActiveCore() {
+        // A separate, never-started frame keeps the real run's callbacks out of this check.
+        var frame = new StressDashboardFrame();
+        try {
+            checkCircularMapping(frame);
+        } finally {
+            frame.dispose();
+        }
+    }
+
+    private static void checkCircularMapping(StressDashboardFrame frame) {
+        frame.applyActiveCores(Set.of(0));
+        frame.applyStats(new StressStats(1000, 1, new double[] {80}, new double[] {1}, 0.1));
+        assert find(frame, "usage-core-0", JProgressBar.class).getValue() == 80;
+        if (Runtime.getRuntime().availableProcessors() >= 2) {
+            frame.applyActiveCores(Set.of(1));
+            frame.applyStats(new StressStats(2000, 1, new double[] {60}, new double[] {1}, 0.1));
+            assert find(frame, "usage-core-1", JProgressBar.class).getValue() == 60
+                : "Metric must land on the active core card";
+            assert find(frame, "usage-core-0", JProgressBar.class).getValue() == 0
+                : "Previously active core must return to zero";
+        }
     }
 
     private static <T extends java.awt.Component> T find(StressDashboardFrame frame, String name, Class<T> type) {

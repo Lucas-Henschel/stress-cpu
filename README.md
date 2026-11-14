@@ -70,6 +70,24 @@ Sem argumentos, a aplicação abre o dashboard gráfico. Para usar os argumentos
 da linha de comando descritos abaixo, acrescente `--console`; no dashboard,
 núcleos, carga e duração são configurados diretamente pela interface.
 
+### Modos de estresse (dashboard)
+
+O dashboard oferece o seletor **Modo de estresse**, aplicado sobre os núcleos
+marcados na interface:
+
+| Modo | Núcleos estressados |
+|---|---|
+| **Todos** | todos os núcleos selecionados (comportamento padrão) |
+| **Pares** | só os índices lógicos pares: `0, 2, 4, ...` |
+| **Ímpares** | só os índices lógicos ímpares: `1, 3, 5, ...` |
+| **Circular** | um núcleo por vez, percorrendo os selecionados em ciclo; troca de núcleo **a cada segundo** |
+
+Pares e Ímpares exigem ao menos um núcleo selecionado compatível; sem isso o
+botão de início fica desabilitado. A numeração é a dos núcleos lógicos do SO,
+como em `--cores`. No modo Circular a rotação reinicia o motor nativo a cada
+troca, então o contador de tempo da execução continua, mas as métricas por
+núcleo recomeçam. O modo `--console` não tem seletor de modo.
+
 O script resolve os próprios caminhos a partir de `dirname "$0"`, então
 funciona de qualquer diretório de trabalho, e repassa todos os argumentos
 para a aplicação. A saída do compilador vai para `build/last-build.log` em
