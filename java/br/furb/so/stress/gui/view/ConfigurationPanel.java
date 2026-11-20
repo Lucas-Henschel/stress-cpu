@@ -1,6 +1,8 @@
 package br.furb.so.stress.gui.view;
 
+import br.furb.so.stress.gui.model.CoreSelection;
 import br.furb.so.stress.gui.model.StressConfiguration;
+import br.furb.so.stress.gui.model.StressMode;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -9,11 +11,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.Set;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -25,6 +29,7 @@ import javax.swing.event.DocumentListener;
 /** Inputs for the mock simulation. Values remain in place between runs. */
 public final class ConfigurationPanel extends JPanel {
     private final List<JCheckBox> cores = new ArrayList<>();
+    private final JComboBox<StressMode> mode = new JComboBox<>(StressMode.values());
     private final JSlider load = new JSlider(1, 100, 50);
     private final JLabel loadValue = new JLabel();
     private final JTextField duration = new JTextField();
@@ -78,6 +83,14 @@ public final class ConfigurationPanel extends JPanel {
         clear.addActionListener(event -> selectCores(false));
         content.add(selectionActions);
         content.add(selectionSummary);
+        content.add(Box.createVerticalStrut(16));
+        content.add(heading("Modo de estresse", 14));
+        content.add(Box.createVerticalStrut(8));
+        mode.setName("mode");
+        mode.setAlignmentX(LEFT_ALIGNMENT);
+        mode.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        mode.addActionListener(event -> refreshValidation());
+        content.add(mode);
         content.add(Box.createVerticalStrut(24));
         content.add(heading("Carga por núcleo", 14));
         load.setName("load");
@@ -105,6 +118,7 @@ public final class ConfigurationPanel extends JPanel {
         });
         content.add(duration);
         content.add(Box.createVerticalStrut(8));
+        validation.setName("validation");
         validation.setFont(validation.getFont().deriveFont(12f));
         content.add(validation);
         executionError.setName("execution-error");
@@ -134,13 +148,14 @@ public final class ConfigurationPanel extends JPanel {
                 selected.add(index);
             }
         }
-        return new StressConfiguration(selected, load.getValue(), readDuration());
+        return new StressConfiguration(selected, load.getValue(), readDuration(), selectedMode());
     }
 
     public void setRunning(boolean running) {
         this.running = running;
         this.starting = false;
         cores.forEach(core -> core.setEnabled(!running));
+        mode.setEnabled(!running);
         load.setEnabled(!running);
         duration.setEnabled(!running);
         selectAll.setEnabled(!running);
@@ -181,6 +196,14 @@ public final class ConfigurationPanel extends JPanel {
         selectionSummary.setText(count + " de " + cores.size() + " núcleos selecionados");
         boolean valid = count > 0;
         String message = valid ? " " : "Selecione ao menos um núcleo";
+        if (valid) {
+            try {
+                CoreSelection.resolve(selectedIndexes(), selectedMode());
+            } catch (IllegalArgumentException noCompatibleCore) {
+                valid = false;
+                message = "Nenhum núcleo selecionado é compatível com o modo " + selectedMode();
+            }
+        }
         try {
             readDuration();
         } catch (IllegalArgumentException invalid) {
@@ -190,6 +213,20 @@ public final class ConfigurationPanel extends JPanel {
         validation.setText(message);
         start.setEnabled(!running && !starting && valid);
         stop.setEnabled(running);
+    }
+
+    private StressMode selectedMode() {
+        return (StressMode) mode.getSelectedItem();
+    }
+
+    private Set<Integer> selectedIndexes() {
+        var selected = new LinkedHashSet<Integer>();
+        for (int index = 0; index < cores.size(); index++) {
+            if (cores.get(index).isSelected()) {
+                selected.add(index);
+            }
+        }
+        return selected;
     }
 
     private void selectCores(boolean selected) {

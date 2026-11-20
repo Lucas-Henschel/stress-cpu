@@ -137,6 +137,12 @@ if(BUILD_TESTING)
     add_test(NAME StressConfigurationTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
                 br.furb.so.stress.gui.model.StressConfigurationTest)
+    add_test(NAME CoreSelectionTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.model.CoreSelectionTest)
+    add_test(NAME StressScheduleTest
+        COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
+                br.furb.so.stress.gui.model.StressScheduleTest)
     add_test(NAME MockStressDataSourceTest
         COMMAND ${Java_JAVA_EXECUTABLE} -ea -cp "${JAVA_TEST_CLASSPATH}"
                 br.furb.so.stress.gui.mock.MockStressDataSourceTest)

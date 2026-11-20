@@ -1,6 +1,7 @@
 package br.furb.so.stress.gui.view;
 
 import br.furb.so.stress.gui.model.CoreMetric;
+import br.furb.so.stress.gui.model.StressMode;
 import java.awt.Component;
 import java.awt.Container;
 import java.util.List;
@@ -8,6 +9,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JProgressBar;
 import javax.swing.JSlider;
@@ -19,8 +21,10 @@ public final class DashboardPanelTest {
     public static void main(String[] args) throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             validatesConfigurationAndPreservesValuesAfterStop();
+            selectsModeAndValidatesParityFilters();
             updatesMetricsAndClearsCoresMissingFromTheNextSample();
             describesRealMonitoringAndAffinity();
+            clearsCollectedDataOnlyWhileIdle();
             supportsManyLogicalProcessors();
         });
         System.out.println("DashboardPanelTest passed");
@@ -72,6 +76,45 @@ public final class DashboardPanelTest {
         assert panel.readConfiguration().equals(before) : "Stopping must preserve the inputs";
     }
 
+    @SuppressWarnings("unchecked")
+    private static void selectsModeAndValidatesParityFilters() {
+        var panel = new ConfigurationPanel(4, () -> { }, () -> { });
+        var mode = (JComboBox<StressMode>) find(panel, "mode", JComboBox.class);
+        var start = find(panel, "start", JButton.class);
+        var validation = find(panel, "validation", JLabel.class);
+        assert mode.getItemCount() == StressMode.values().length;
+        assert panel.readConfiguration().mode() == StressMode.TODOS : "Default mode must be Todos";
+
+        mode.setSelectedItem(StressMode.PARES);
+        assert panel.readConfiguration().mode() == StressMode.PARES;
+        assert start.isEnabled();
+        find(panel, "core-0", JCheckBox.class).doClick();
+        find(panel, "core-2", JCheckBox.class).doClick();
+        assert !start.isEnabled() : "Pares without even cores must prevent starting";
+        assert !validation.getText().isBlank() && validation.getText().contains("Pares");
+
+        mode.setSelectedItem(StressMode.IMPARES);
+        assert start.isEnabled() : "Odd cores 1 and 3 remain selected";
+        find(panel, "core-1", JCheckBox.class).doClick();
+        find(panel, "core-3", JCheckBox.class).doClick();
+        find(panel, "core-0", JCheckBox.class).doClick();
+        assert !start.isEnabled() : "Ímpares without odd cores must prevent starting";
+
+        mode.setSelectedItem(StressMode.CIRCULAR);
+        assert start.isEnabled() : "Circular accepts any non-empty selection";
+        assert panel.readConfiguration().mode() == StressMode.CIRCULAR;
+        for (var dynamic : List.of(StressMode.ESCALONADO, StressMode.OSCILANTE, StressMode.ALEATORIO)) {
+            mode.setSelectedItem(dynamic);
+            assert start.isEnabled() : dynamic + " accepts any non-empty selection";
+            assert panel.readConfiguration().mode() == dynamic;
+        }
+
+        panel.setRunning(true);
+        assert !mode.isEnabled();
+        panel.setRunning(false);
+        assert mode.isEnabled();
+    }
+
     private static void updatesMetricsAndClearsCoresMissingFromTheNextSample() {
         var panel = new MonitoringPanel(4);
         panel.updateMetrics(List.of(new CoreMetric(0, 40), new CoreMetric(2, 80)), 65_000);
@@ -84,6 +127,28 @@ public final class DashboardPanelTest {
         assert find(panel, "usage-core-2", JProgressBar.class).getValue() == 0;
         assert find(panel, "usage-core-1", JProgressBar.class).getValue() == 100;
         assert find(panel, "usage-total", JProgressBar.class).getValue() == 25;
+    }
+
+    private static void clearsCollectedDataOnlyWhileIdle() {
+        var panel = new MonitoringPanel(3);
+        var clear = find(panel, "clear-data", JButton.class);
+        assert !clear.isEnabled() : "Nothing to clear before the first sample";
+
+        panel.setRunning(true, true);
+        panel.updateMetrics(List.of(new CoreMetric(0, 90), new CoreMetric(2, 60)), 125_000);
+        assert !clear.isEnabled() : "Clearing must be blocked while the test runs";
+
+        panel.setRunning(false);
+        assert clear.isEnabled() : "Data from the finished run can be cleared";
+        clear.doClick();
+        assert find(panel, "usage-total", JProgressBar.class).getValue() == 0;
+        assert find(panel, "usage-total", JProgressBar.class).getString().equals("0,0%");
+        for (int index = 0; index < 3; index++) {
+            var bar = find(panel, "usage-core-" + index, JProgressBar.class);
+            assert bar.getValue() == 0 && bar.getString().equals("0,0%") : "Core " + index + " not cleared";
+        }
+        assert find(panel, "elapsed", JLabel.class).getText().contains("00:00:00");
+        assert !clear.isEnabled() : "Nothing left to clear";
     }
 
     private static void supportsManyLogicalProcessors() {

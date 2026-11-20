@@ -8,6 +8,8 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.OptionalInt;
+import java.util.Set;
 import javax.swing.BorderFactory;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -18,6 +20,8 @@ public final class StressDashboardFrame extends JFrame {
     private final ConfigurationPanel configuration;
     private final MonitoringPanel monitoring;
     private final StressExecutionController controller;
+    private boolean runEnded;
+    private StressConfiguration startedConfiguration;
     private StressConfiguration activeConfiguration;
     private long startedNanos;
 
@@ -26,7 +30,8 @@ public final class StressDashboardFrame extends JFrame {
         int coreCount = Runtime.getRuntime().availableProcessors();
         configuration = new ConfigurationPanel(coreCount, this::startStress, this::stopStress);
         monitoring = new MonitoringPanel(coreCount);
-        controller = new StressExecutionController(this::onStats, this::onFailure, this::onStopped);
+        controller = new StressExecutionController(this::onStats, this::onFailure, this::onStopped,
+            this::onActiveCores);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         JPanel content = new JPanel(new BorderLayout());
         configuration.setBorder(BorderFactory.createCompoundBorder(
@@ -53,7 +58,9 @@ public final class StressDashboardFrame extends JFrame {
 
     private void startStress() {
         try {
-            activeConfiguration = configuration.readConfiguration();
+            runEnded = false;
+            startedConfiguration = configuration.readConfiguration();
+            activeConfiguration = startedConfiguration;
             configuration.setExecutionError(null);
             configuration.setStarting(true);
             controller.start(activeConfiguration).whenComplete((run, failure) -> SwingUtilities.invokeLater(() -> {
@@ -72,11 +79,30 @@ public final class StressDashboardFrame extends JFrame {
     }
 
     private void onStats(StressStats stats) {
-        SwingUtilities.invokeLater(() -> {
-            if (activeConfiguration != null) {
-                monitoring.updateMetrics(RealStressMetrics.from(activeConfiguration, stats), stats.elapsedMillis());
-            }
-        });
+        SwingUtilities.invokeLater(() -> applyStats(stats));
+    }
+
+    private void onActiveCores(Set<Integer> activeCores) {
+        SwingUtilities.invokeLater(() -> applyActiveCores(activeCores));
+    }
+
+    /** Maps native worker metrics onto the cores currently measured. Must run on the EDT. */
+    void applyStats(StressStats stats) {
+        if (activeConfiguration != null) {
+            monitoring.updateMetrics(RealStressMetrics.from(activeConfiguration, stats), stats.elapsedMillis());
+        }
+    }
+
+    /**
+     * Replaces the cores used to map metrics (static filters or the current step of a dynamic mode)
+     * while keeping the user's full configuration. Must run on the EDT.
+     */
+    void applyActiveCores(Set<Integer> activeCores) {
+        if (runEnded) {
+            return; // Late callback after the run ended.
+        }
+        int load = startedConfiguration != null ? startedConfiguration.loadPercent() : 1;
+        activeConfiguration = new StressConfiguration(activeCores, load, OptionalInt.empty());
     }
 
     private void stopStress() {
@@ -86,6 +112,8 @@ public final class StressDashboardFrame extends JFrame {
     private void onStopped() {
         SwingUtilities.invokeLater(() -> {
             activeConfiguration = null;
+            startedConfiguration = null;
+            runEnded = true;
             configuration.setRunning(false);
             monitoring.setRunning(false);
         });

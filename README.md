@@ -70,6 +70,29 @@ Sem argumentos, a aplicação abre o dashboard gráfico. Para usar os argumentos
 da linha de comando descritos abaixo, acrescente `--console`; no dashboard,
 núcleos, carga e duração são configurados diretamente pela interface.
 
+### Modos de estresse (dashboard)
+
+O dashboard oferece o seletor **Modo de estresse**, aplicado sobre os núcleos
+marcados na interface:
+
+| Modo | Núcleos estressados |
+|---|---|
+| **Todos** | todos os núcleos selecionados (comportamento padrão) |
+| **Pares** | só os índices lógicos pares: `0, 2, 4, ...` |
+| **Ímpares** | só os índices lógicos ímpares: `1, 3, 5, ...` |
+| **Circular** | um núcleo por vez, percorrendo os selecionados em ciclo; troca de núcleo **a cada segundo** |
+| **Escalonado** | começa com o primeiro núcleo selecionado e acrescenta mais um **a cada segundo** até estressar todos; depois mantém todos ativos |
+| **Carga oscilante** | todos os selecionados, alternando **a cada segundo** entre a carga configurada e 1/4 dela (mínimo 1%) |
+| **Aleatório** | um núcleo por vez, sorteado entre os selecionados **a cada segundo**, nunca repetindo o núcleo atual |
+
+Pares e Ímpares exigem ao menos um núcleo selecionado compatível; sem isso o
+botão de início fica desabilitado. A numeração é a dos núcleos lógicos do SO,
+como em `--cores`. O motor nativo não altera núcleos nem carga em execução,
+então os modos dinâmicos (Circular, Escalonado, Carga oscilante e Aleatório)
+reiniciam o motor a cada troca: o contador de tempo da execução continua, mas
+as métricas por núcleo recomeçam. A sequência de passos de cada modo fica em
+`StressSchedule`. O modo `--console` não tem seletor de modo.
+
 O script resolve os próprios caminhos a partir de `dirname "$0"`, então
 funciona de qualquer diretório de trabalho, e repassa todos os argumentos
 para a aplicação. A saída do compilador vai para `build/last-build.log` em

@@ -10,6 +10,7 @@ public final class StressConfigurationTest {
         preservesImmutableCoreSelection();
         rejectsInvalidConfiguration();
         validatesMetricBounds();
+        carriesModeWithTodosCompatibilityDefault();
         System.out.println("StressConfigurationTest passed");
     }
 
@@ -45,6 +46,18 @@ public final class StressConfigurationTest {
         rejects(() -> new StressConfiguration(Set.of(0), 50, OptionalInt.of(0)));
         rejects(() -> new StressConfiguration(Set.of(0), 50, OptionalInt.of(-1)));
         rejects(() -> new StressConfiguration(Set.of(-1), 50, OptionalInt.empty()));
+    }
+
+    private static void carriesModeWithTodosCompatibilityDefault() {
+        assert new StressConfiguration(Set.of(0), 50, OptionalInt.empty()).mode() == StressMode.TODOS;
+        var circular = new StressConfiguration(Set.of(0, 1), 50, OptionalInt.empty(), StressMode.CIRCULAR);
+        assert circular.mode() == StressMode.CIRCULAR;
+        try {
+            new StressConfiguration(Set.of(0), 50, OptionalInt.empty(), null);
+            throw new AssertionError("Expected NullPointerException");
+        } catch (NullPointerException expected) {
+            // A null mode is rejected.
+        }
     }
 
     private static void validatesMetricBounds() {
