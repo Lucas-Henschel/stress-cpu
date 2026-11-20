@@ -57,6 +57,9 @@ public final class CoreSelectionTest {
         assert StressMode.PARES.toString().equals("Pares");
         assert StressMode.IMPARES.toString().equals("Ímpares");
         assert StressMode.CIRCULAR.toString().equals("Circular");
+        assert StressMode.ESCALONADO.toString().equals("Escalonado");
+        assert StressMode.OSCILANTE.toString().equals("Carga oscilante");
+        assert StressMode.ALEATORIO.toString().equals("Aleatório");
     }
 
     private static void rejects(Runnable action) {

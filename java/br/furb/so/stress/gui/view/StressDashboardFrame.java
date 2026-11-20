@@ -94,7 +94,7 @@ public final class StressDashboardFrame extends JFrame {
     }
 
     /**
-     * Replaces the cores used to map metrics (Pares, Ímpares and the current Circular core)
+     * Replaces the cores used to map metrics (static filters or the current step of a dynamic mode)
      * while keeping the user's full configuration. Must run on the EDT.
      */
     void applyActiveCores(Set<Integer> activeCores) {

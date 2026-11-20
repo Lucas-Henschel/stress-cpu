@@ -82,7 +82,7 @@ public final class DashboardPanelTest {
         var mode = (JComboBox<StressMode>) find(panel, "mode", JComboBox.class);
         var start = find(panel, "start", JButton.class);
         var validation = find(panel, "validation", JLabel.class);
-        assert mode.getItemCount() == 4;
+        assert mode.getItemCount() == StressMode.values().length;
         assert panel.readConfiguration().mode() == StressMode.TODOS : "Default mode must be Todos";
 
         mode.setSelectedItem(StressMode.PARES);
@@ -103,6 +103,11 @@ public final class DashboardPanelTest {
         mode.setSelectedItem(StressMode.CIRCULAR);
         assert start.isEnabled() : "Circular accepts any non-empty selection";
         assert panel.readConfiguration().mode() == StressMode.CIRCULAR;
+        for (var dynamic : List.of(StressMode.ESCALONADO, StressMode.OSCILANTE, StressMode.ALEATORIO)) {
+            mode.setSelectedItem(dynamic);
+            assert start.isEnabled() : dynamic + " accepts any non-empty selection";
+            assert panel.readConfiguration().mode() == dynamic;
+        }
 
         panel.setRunning(true);
         assert !mode.isEnabled();

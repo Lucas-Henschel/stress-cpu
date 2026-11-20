@@ -23,6 +23,9 @@ public final class StressExecutionControllerTest {
         circularWithSingleCoreKeepsRunning();
         circularStopCancelsRotationAndStopsOnce();
         circularElapsedTimeKeepsGrowingAcrossRotations();
+        escalonadoRampsUpAndStopsRestartingWhenComplete();
+        oscilanteAlternatesLoadOnTheSameCores();
+        aleatorioRunsOneCoreAndNeverRepeatsConsecutively();
         System.out.println("StressExecutionControllerTest passed");
     }
 
@@ -162,6 +165,62 @@ public final class StressExecutionControllerTest {
         assert elapsed.get(elapsed.size() - 1) >= 100 : "Elapsed must span rotations: " + elapsed;
     }
 
+    private static void escalonadoRampsUpAndStopsRestartingWhenComplete() throws Exception {
+        var bridge = new FakeBridge(false);
+        var active = new CopyOnWriteArrayList<Set<Integer>>();
+        try (var controller = controller(bridge, active, 10, 20)) {
+            controller.start(new StressConfiguration(Set.of(2, 0, 1), 60, OptionalInt.empty(), StressMode.ESCALONADO))
+                .join();
+            await(() -> active.size() >= 3, "Expected the ramp to reach every core");
+            Thread.sleep(120);
+            assert bridge.startCalls.get() == 3 : "Ramp must stop restarting once complete: " + bridge.startCalls;
+            controller.stop().join();
+        }
+        assert bridge.startedCores.size() == 3;
+        assert Arrays.equals(bridge.startedCores.get(0), new int[] {0});
+        assert Arrays.equals(bridge.startedCores.get(1), new int[] {0, 1});
+        assert Arrays.equals(bridge.startedCores.get(2), new int[] {0, 1, 2});
+        assert active.equals(List.of(Set.of(0), Set.of(0, 1), Set.of(0, 1, 2)));
+        assert bridge.maxConcurrentRuns == 1 && bridge.startCalls.get() == bridge.stopCalls.get();
+    }
+
+    private static void oscilanteAlternatesLoadOnTheSameCores() throws Exception {
+        var bridge = new FakeBridge(false);
+        var active = new CopyOnWriteArrayList<Set<Integer>>();
+        try (var controller = controller(bridge, active, 10, 20)) {
+            controller.start(new StressConfiguration(Set.of(1, 3), 80, OptionalInt.empty(), StressMode.OSCILANTE))
+                .join();
+            await(() -> bridge.startedLoads.size() >= 4, "Expected the load to alternate");
+            controller.stop().join();
+        }
+        for (int i = 0; i < 4; i++) {
+            int expected = i % 2 == 0 ? 80 : 20;
+            assert Arrays.equals(bridge.startedLoads.get(i), new int[] {expected, expected}) : "Phase " + i;
+            assert Arrays.equals(bridge.startedCores.get(i), new int[] {1, 3});
+        }
+        assert bridge.maxConcurrentRuns == 1 && bridge.startCalls.get() == bridge.stopCalls.get();
+    }
+
+    private static void aleatorioRunsOneCoreAndNeverRepeatsConsecutively() throws Exception {
+        var bridge = new FakeBridge(false);
+        var active = new CopyOnWriteArrayList<Set<Integer>>();
+        try (var controller = new StressExecutionController(bridge, stats -> { }, failure -> {
+            throw new AssertionError(failure);
+        }, () -> { }, active::add, () -> 0.1, 10, 10, new java.util.Random(7))) {
+            controller.start(new StressConfiguration(Set.of(0, 1, 2), 50, OptionalInt.empty(), StressMode.ALEATORIO))
+                .join();
+            await(() -> active.size() >= 10, "Expected several random steps");
+            controller.stop().join();
+        }
+        for (int i = 0; i < bridge.startedCores.size(); i++) {
+            assert bridge.startedCores.get(i).length == 1 : "Aleatório stresses one core at a time";
+            if (i > 0) {
+                assert bridge.startedCores.get(i)[0] != bridge.startedCores.get(i - 1)[0] : "Repeated core at " + i;
+            }
+        }
+        assert bridge.maxConcurrentRuns == 1 && bridge.startCalls.get() == bridge.stopCalls.get();
+    }
+
     private static StressExecutionController controller(FakeBridge bridge, List<Set<Integer>> active,
                                                         long sampleMillis, long circularMillis) {
         return new StressExecutionController(bridge, stats -> { }, failure -> {
@@ -190,6 +249,7 @@ public final class StressExecutionControllerTest {
         private final AtomicInteger stopCalls = new AtomicInteger();
         private final List<String> controlThreads = new ArrayList<>();
         private final List<int[]> startedCores = new CopyOnWriteArrayList<>();
+        private final List<int[]> startedLoads = new CopyOnWriteArrayList<>();
         private int running;
         private int maxConcurrentRuns;
         private int[] cores;
@@ -206,6 +266,7 @@ public final class StressExecutionControllerTest {
             this.loads = loads.clone();
             elapsed = 0; // the native clock restarts with each engine
             startedCores.add(cores.clone());
+            startedLoads.add(loads.clone());
             maxConcurrentRuns = Math.max(maxConcurrentRuns, ++running);
             startCalls.incrementAndGet();
             return true;

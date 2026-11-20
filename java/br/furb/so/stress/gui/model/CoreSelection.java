@@ -21,7 +21,7 @@ public final class CoreSelection {
             .distinct()
             .sorted()
             .filter(core -> switch (mode) {
-                case TODOS, CIRCULAR -> true;
+                case TODOS, CIRCULAR, ESCALONADO, OSCILANTE, ALEATORIO -> true;
                 case PARES -> core % 2 == 0;
                 case IMPARES -> core % 2 != 0;
             })

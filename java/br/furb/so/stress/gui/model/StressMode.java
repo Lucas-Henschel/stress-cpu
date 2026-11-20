@@ -5,7 +5,10 @@ public enum StressMode {
     TODOS("Todos"),
     PARES("Pares"),
     IMPARES("Ímpares"),
-    CIRCULAR("Circular");
+    CIRCULAR("Circular"),
+    ESCALONADO("Escalonado"),
+    OSCILANTE("Carga oscilante"),
+    ALEATORIO("Aleatório");
 
     private final String label;
 

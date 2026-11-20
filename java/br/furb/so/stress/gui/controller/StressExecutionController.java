@@ -1,14 +1,13 @@
 package br.furb.so.stress.gui.controller;
 
-import br.furb.so.stress.gui.model.CoreSelection;
 import br.furb.so.stress.gui.model.StressConfiguration;
-import br.furb.so.stress.gui.model.StressMode;
+import br.furb.so.stress.gui.model.StressSchedule;
 import br.furb.so.stress.jni.CpuStress;
 import br.furb.so.stress.metrics.StressStats;
 import java.lang.management.ManagementFactory;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -17,11 +16,13 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
+import java.util.random.RandomGenerator;
 
 /** Serializes all JNI lifecycle calls away from the Swing event-dispatch thread. */
 public final class StressExecutionController implements AutoCloseable {
     private static final long DEFAULT_SAMPLE_MILLIS = 500;
-    static final long CIRCULAR_INTERVAL_MILLIS = 1000;
+    /** Intervalo entre passos dos modos dinamicos (Circular, Escalonado, Carga oscilante, Aleatorio). */
+    static final long STEP_INTERVAL_MILLIS = 1000;
 
     interface Bridge {
         boolean start(int[] cores, int[] loads);
@@ -40,11 +41,11 @@ public final class StressExecutionController implements AutoCloseable {
     private final DoubleSupplier systemLoad;
     private final ScheduledExecutorService control;
     private final long sampleMillis;
-    private final long circularIntervalMillis;
+    private final long stepIntervalMillis;
+    private final RandomGenerator random;
     private ScheduledFuture<?> sampling;
-    private ScheduledFuture<?> rotation;
-    private List<Integer> resolvedCores;
-    private int circularIndex;
+    private ScheduledFuture<?> stepping;
+    private StressSchedule schedule;
     private int activeCoreCount;
     private boolean engineActive;
     private long[] previous;
@@ -63,7 +64,7 @@ public final class StressExecutionController implements AutoCloseable {
     public StressExecutionController(Consumer<StressStats> onStats, Consumer<Throwable> onFailure, Runnable onStopped,
                                      Consumer<Set<Integer>> onActiveCores) {
         this(new NativeBridge(), onStats, onFailure, onStopped, onActiveCores, StressExecutionController::systemLoad,
-            DEFAULT_SAMPLE_MILLIS, CIRCULAR_INTERVAL_MILLIS);
+            DEFAULT_SAMPLE_MILLIS, STEP_INTERVAL_MILLIS);
     }
 
     StressExecutionController(Bridge bridge, Consumer<StressStats> onStats, Consumer<Throwable> onFailure,
@@ -73,12 +74,19 @@ public final class StressExecutionController implements AutoCloseable {
 
     StressExecutionController(Bridge bridge, Consumer<StressStats> onStats, Consumer<Throwable> onFailure,
                               Runnable onStopped, DoubleSupplier systemLoad, long sampleMillis) {
-        this(bridge, onStats, onFailure, onStopped, activeCores -> { }, systemLoad, sampleMillis, CIRCULAR_INTERVAL_MILLIS);
+        this(bridge, onStats, onFailure, onStopped, activeCores -> { }, systemLoad, sampleMillis, STEP_INTERVAL_MILLIS);
     }
 
     StressExecutionController(Bridge bridge, Consumer<StressStats> onStats, Consumer<Throwable> onFailure,
                               Runnable onStopped, Consumer<Set<Integer>> onActiveCores, DoubleSupplier systemLoad,
-                              long sampleMillis, long circularIntervalMillis) {
+                              long sampleMillis, long stepIntervalMillis) {
+        this(bridge, onStats, onFailure, onStopped, onActiveCores, systemLoad, sampleMillis, stepIntervalMillis,
+            new Random());
+    }
+
+    StressExecutionController(Bridge bridge, Consumer<StressStats> onStats, Consumer<Throwable> onFailure,
+                              Runnable onStopped, Consumer<Set<Integer>> onActiveCores, DoubleSupplier systemLoad,
+                              long sampleMillis, long stepIntervalMillis, RandomGenerator random) {
         this.bridge = Objects.requireNonNull(bridge, "bridge");
         this.onStats = Objects.requireNonNull(onStats, "onStats");
         this.onFailure = Objects.requireNonNull(onFailure, "onFailure");
@@ -86,9 +94,10 @@ public final class StressExecutionController implements AutoCloseable {
         this.onActiveCores = Objects.requireNonNull(onActiveCores, "onActiveCores");
         this.systemLoad = Objects.requireNonNull(systemLoad, "systemLoad");
         if (sampleMillis < 1) throw new IllegalArgumentException("sampleMillis deve ser positivo");
-        if (circularIntervalMillis < 1) throw new IllegalArgumentException("circularIntervalMillis deve ser positivo");
+        if (stepIntervalMillis < 1) throw new IllegalArgumentException("stepIntervalMillis deve ser positivo");
         this.sampleMillis = sampleMillis;
-        this.circularIntervalMillis = circularIntervalMillis;
+        this.stepIntervalMillis = stepIntervalMillis;
+        this.random = Objects.requireNonNull(random, "random");
         control = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "cpu-stress-controller");
             thread.setDaemon(true);
@@ -131,20 +140,19 @@ public final class StressExecutionController implements AutoCloseable {
             return;
         }
         try {
-            List<Integer> resolved = CoreSelection.resolve(nextConfiguration.selectedCores(), nextConfiguration.mode());
-            boolean circular = nextConfiguration.mode() == StressMode.CIRCULAR;
-            int[] cores = circular ? new int[] {resolved.get(0)} : resolved.stream().mapToInt(Integer::intValue).toArray();
-            boolean affinityFixed = startEngine(cores, nextConfiguration.loadPercent());
+            StressSchedule nextSchedule = new StressSchedule(nextConfiguration, random);
+            StressSchedule.Step step = nextSchedule.current();
+            int[] cores = step.coreArray();
+            boolean affinityFixed = startEngine(cores, step.loadPercent());
             this.configuration = nextConfiguration;
-            this.resolvedCores = resolved;
-            this.circularIndex = 0;
+            this.schedule = nextSchedule;
             this.startedNanos = System.nanoTime();
             this.running = true;
             publishActiveCores(cores);
             scheduleSampling();
-            if (circular && resolved.size() > 1) {
-                rotation = control.scheduleWithFixedDelay(this::rotateCircularOnControlThread,
-                    circularIntervalMillis, circularIntervalMillis, TimeUnit.MILLISECONDS);
+            if (nextSchedule.isDynamic()) {
+                stepping = control.scheduleWithFixedDelay(this::advanceScheduleOnControlThread,
+                    stepIntervalMillis, stepIntervalMillis, TimeUnit.MILLISECONDS);
             }
             result.complete(new RunStart(affinityFixed));
         } catch (Throwable failure) {
@@ -182,7 +190,8 @@ public final class StressExecutionController implements AutoCloseable {
         }
     }
 
-    private void rotateCircularOnControlThread() {
+    /** Troca o motor para o proximo passo do modo; o motor nativo so muda nucleos/carga reiniciando. */
+    private void advanceScheduleOnControlThread() {
         if (!running) return;
         try {
             if (sampling != null) {
@@ -190,11 +199,16 @@ public final class StressExecutionController implements AutoCloseable {
                 sampling = null;
             }
             stopEngine();
-            circularIndex = (circularIndex + 1) % resolvedCores.size();
-            int[] next = {resolvedCores.get(circularIndex)};
-            startEngine(next, configuration.loadPercent());
-            publishActiveCores(next);
+            StressSchedule.Step next = schedule.advance();
+            int[] cores = next.coreArray();
+            startEngine(cores, next.loadPercent());
+            publishActiveCores(cores);
             scheduleSampling();
+            if (!schedule.isDynamic() && stepping != null) {
+                // Rampa do Escalonado completa: mantem o ultimo passo sem novas reinicializacoes.
+                stepping.cancel(false);
+                stepping = null;
+            }
         } catch (Throwable failure) {
             try {
                 stopOnControlThread();
@@ -212,7 +226,7 @@ public final class StressExecutionController implements AutoCloseable {
             if (current[1] == 0) return;
             if (previous != null) {
                 StressStats delta = StressStats.delta(previous, current, systemLoad.getAsDouble());
-                // O relogio nativo reinicia a cada troca circular; o tempo exibido segue o da execucao inteira.
+                // O relogio nativo reinicia a cada troca de passo; o tempo exibido segue o da execucao inteira.
                 long elapsedMillis = (System.nanoTime() - startedNanos) / 1_000_000L;
                 onStats.accept(new StressStats(elapsedMillis, delta.threadCount(), delta.utilization(),
                     delta.iterationsPerSec(), delta.systemLoad()));
@@ -238,9 +252,9 @@ public final class StressExecutionController implements AutoCloseable {
             sampling.cancel(false);
             sampling = null;
         }
-        if (rotation != null) {
-            rotation.cancel(false);
-            rotation = null;
+        if (stepping != null) {
+            stepping.cancel(false);
+            stepping = null;
         }
         try {
             stopEngine();
