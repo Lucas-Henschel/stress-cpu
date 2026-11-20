@@ -24,6 +24,7 @@ public final class DashboardPanelTest {
             selectsModeAndValidatesParityFilters();
             updatesMetricsAndClearsCoresMissingFromTheNextSample();
             describesRealMonitoringAndAffinity();
+            clearsCollectedDataOnlyWhileIdle();
             supportsManyLogicalProcessors();
         });
         System.out.println("DashboardPanelTest passed");
@@ -121,6 +122,28 @@ public final class DashboardPanelTest {
         assert find(panel, "usage-core-2", JProgressBar.class).getValue() == 0;
         assert find(panel, "usage-core-1", JProgressBar.class).getValue() == 100;
         assert find(panel, "usage-total", JProgressBar.class).getValue() == 25;
+    }
+
+    private static void clearsCollectedDataOnlyWhileIdle() {
+        var panel = new MonitoringPanel(3);
+        var clear = find(panel, "clear-data", JButton.class);
+        assert !clear.isEnabled() : "Nothing to clear before the first sample";
+
+        panel.setRunning(true, true);
+        panel.updateMetrics(List.of(new CoreMetric(0, 90), new CoreMetric(2, 60)), 125_000);
+        assert !clear.isEnabled() : "Clearing must be blocked while the test runs";
+
+        panel.setRunning(false);
+        assert clear.isEnabled() : "Data from the finished run can be cleared";
+        clear.doClick();
+        assert find(panel, "usage-total", JProgressBar.class).getValue() == 0;
+        assert find(panel, "usage-total", JProgressBar.class).getString().equals("0,0%");
+        for (int index = 0; index < 3; index++) {
+            var bar = find(panel, "usage-core-" + index, JProgressBar.class);
+            assert bar.getValue() == 0 && bar.getString().equals("0,0%") : "Core " + index + " not cleared";
+        }
+        assert find(panel, "elapsed", JLabel.class).getText().contains("00:00:00");
+        assert !clear.isEnabled() : "Nothing left to clear";
     }
 
     private static void supportsManyLogicalProcessors() {

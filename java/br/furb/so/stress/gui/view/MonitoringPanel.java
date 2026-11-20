@@ -3,6 +3,7 @@ package br.furb.so.stress.gui.view;
 import br.furb.so.stress.gui.model.CoreMetric;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.util.ArrayList;
@@ -11,6 +12,7 @@ import java.util.Locale;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
@@ -22,6 +24,9 @@ public final class MonitoringPanel extends JPanel {
     private final JLabel elapsed = new JLabel("Tempo decorrido: 00:00:00");
     private final JProgressBar total = new JProgressBar(0, 100);
     private final List<JProgressBar> coreBars = new ArrayList<>();
+    private final JButton clearData = new JButton("Limpar dados");
+    private boolean running;
+    private boolean hasData;
 
     public MonitoringPanel(int coreCount) {
         if (coreCount < 1) {
@@ -33,7 +38,17 @@ public final class MonitoringPanel extends JPanel {
         summary.setLayout(new BoxLayout(summary, BoxLayout.Y_AXIS));
         JLabel title = new JLabel("Monitoramento");
         title.setFont(title.getFont().deriveFont(Font.BOLD, 20));
-        summary.add(title);
+        clearData.setName("clear-data");
+        clearData.setToolTipText("Zera as barras e o tempo do último teste");
+        clearData.addActionListener(event -> clearMetrics());
+        JPanel header = new JPanel(new BorderLayout());
+        header.setAlignmentX(LEFT_ALIGNMENT);
+        header.add(title, BorderLayout.WEST);
+        JPanel headerActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        headerActions.add(clearData);
+        header.add(headerActions, BorderLayout.EAST);
+        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, header.getPreferredSize().height));
+        summary.add(header);
         summary.add(Box.createVerticalStrut(8));
         JLabel source = new JLabel("Métricas medidas pelo motor nativo");
         source.setName("metrics-source");
@@ -79,6 +94,7 @@ public final class MonitoringPanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getVerticalScrollBar().setUnitIncrement(24);
         add(scroll, BorderLayout.CENTER);
+        refreshClearData();
     }
 
     public void setRunning(boolean running) {
@@ -86,6 +102,8 @@ public final class MonitoringPanel extends JPanel {
     }
 
     public void setRunning(boolean running, boolean affinityFixed) {
+        this.running = running;
+        refreshClearData();
         if (!running) {
             state.setText("Estado: ocioso");
         } else if (affinityFixed) {
@@ -106,6 +124,24 @@ public final class MonitoringPanel extends JPanel {
         long seconds = Math.max(0, elapsedMillis / 1000);
         elapsed.setText(String.format(Locale.ROOT, "Tempo decorrido: %02d:%02d:%02d",
             seconds / 3600, (seconds / 60) % 60, seconds % 60));
+        hasData = true;
+        refreshClearData();
+    }
+
+    /** Zera as barras e o tempo exibidos; ignorado enquanto um teste roda. */
+    public void clearMetrics() {
+        if (running) {
+            return;
+        }
+        coreBars.forEach(progress -> updateProgress(progress, 0));
+        updateProgress(total, 0);
+        elapsed.setText("Tempo decorrido: 00:00:00");
+        hasData = false;
+        refreshClearData();
+    }
+
+    private void refreshClearData() {
+        clearData.setEnabled(!running && hasData);
     }
 
     private static void updateProgress(JProgressBar progress, double value) {
