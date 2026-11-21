@@ -1,5 +1,6 @@
 package br.furb.so.stress.gui.model;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.random.RandomGenerator;
@@ -10,6 +11,9 @@ import java.util.random.RandomGenerator;
  * Nao e thread-safe: o controlador usa a instancia apenas na sua thread de controle.
  */
 public final class StressSchedule {
+    /** Degraus da rampa do modo Oscilante, do piso (1/4 da carga) ate a carga configurada. */
+    static final int OSCILLATION_LEVELS = 5;
+
     /** Um estado do motor nativo: quais nucleos rodam e com qual carga. */
     public record Step(List<Integer> cores, int loadPercent) {
         public Step {
@@ -24,10 +28,10 @@ public final class StressSchedule {
     private final StressMode mode;
     private final List<Integer> cores;
     private final int highLoad;
-    private final int lowLoad;
+    private final List<Integer> oscillationLoads;
     private final RandomGenerator random;
     private int index;
-    private boolean lowPhase;
+    private int oscillationPhase;
     private Step current;
 
     public StressSchedule(StressConfiguration configuration, RandomGenerator random) {
@@ -36,7 +40,7 @@ public final class StressSchedule {
         this.mode = configuration.mode();
         this.cores = CoreSelection.resolve(configuration.selectedCores(), mode);
         this.highLoad = configuration.loadPercent();
-        this.lowLoad = Math.max(1, highLoad / 4);
+        this.oscillationLoads = oscillationLoads(highLoad);
         this.index = mode == StressMode.ALEATORIO ? random.nextInt(cores.size()) : 0;
         this.current = build();
     }
@@ -51,7 +55,7 @@ public final class StressSchedule {
             case TODOS, PARES, IMPARES -> false;
             case CIRCULAR, ALEATORIO -> cores.size() > 1;
             case ESCALONADO -> index < cores.size() - 1;
-            case OSCILANTE -> lowLoad != highLoad;
+            case OSCILANTE -> oscillationLoads.size() > 1;
         };
     }
 
@@ -63,7 +67,7 @@ public final class StressSchedule {
         switch (mode) {
             case CIRCULAR -> index = (index + 1) % cores.size();
             case ESCALONADO -> index++;
-            case OSCILANTE -> lowPhase = !lowPhase;
+            case OSCILANTE -> oscillationPhase = (oscillationPhase + 1) % (2 * (oscillationLoads.size() - 1));
             case ALEATORIO -> {
                 // Sorteia entre os demais nucleos para garantir troca a cada passo.
                 int next = random.nextInt(cores.size() - 1);
@@ -80,7 +84,30 @@ public final class StressSchedule {
             case TODOS, PARES, IMPARES -> new Step(cores, highLoad);
             case CIRCULAR, ALEATORIO -> new Step(List.of(cores.get(index)), highLoad);
             case ESCALONADO -> new Step(cores.subList(0, index + 1), highLoad);
-            case OSCILANTE -> new Step(cores, lowPhase ? lowLoad : highLoad);
+            case OSCILANTE -> new Step(cores, oscillationLoad());
         };
+    }
+
+    /**
+     * Onda triangular: comeca na carga configurada, desce um degrau por passo ate o piso e
+     * sobe de volta, sem saltar direto de um extremo ao outro.
+     */
+    private int oscillationLoad() {
+        int top = oscillationLoads.size() - 1;
+        int distanceFromTop = oscillationPhase <= top ? oscillationPhase : 2 * top - oscillationPhase;
+        return oscillationLoads.get(top - distanceFromTop);
+    }
+
+    /** Degraus crescentes e distintos entre 1/4 da carga (minimo 1%) e a carga configurada. */
+    static List<Integer> oscillationLoads(int highLoad) {
+        int lowLoad = Math.max(1, highLoad / 4);
+        var loads = new ArrayList<Integer>();
+        for (int level = 0; level < OSCILLATION_LEVELS; level++) {
+            int load = lowLoad + Math.round((highLoad - lowLoad) * level / (float) (OSCILLATION_LEVELS - 1));
+            if (loads.isEmpty() || loads.get(loads.size() - 1) != load) {
+                loads.add(load);
+            }
+        }
+        return List.copyOf(loads);
     }
 }

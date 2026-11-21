@@ -194,7 +194,7 @@ public final class StressExecutionControllerTest {
             controller.stop().join();
         }
         for (int i = 0; i < 4; i++) {
-            int expected = i % 2 == 0 ? 80 : 20;
+            int expected = new int[] {80, 65, 50, 35}[i];
             assert Arrays.equals(bridge.startedLoads.get(i), new int[] {expected, expected}) : "Phase " + i;
             assert Arrays.equals(bridge.startedCores.get(i), new int[] {1, 3});
         }
