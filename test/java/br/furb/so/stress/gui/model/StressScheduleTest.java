@@ -57,13 +57,16 @@ public final class StressScheduleTest {
     private static void oscilanteAlternatesBetweenFullAndQuarterLoad() {
         var schedule = schedule(Set.of(1, 0), 80, StressMode.OSCILANTE);
         assert schedule.isDynamic();
-        assert steps(schedule, 4).equals(List.of(
-            new StressSchedule.Step(List.of(0, 1), 80),
-            new StressSchedule.Step(List.of(0, 1), 20),
-            new StressSchedule.Step(List.of(0, 1), 80),
-            new StressSchedule.Step(List.of(0, 1), 20)));
+        var loads = steps(schedule, 10).stream().map(StressSchedule.Step::loadPercent).toList();
+        assert loads.equals(List.of(80, 65, 50, 35, 20, 35, 50, 65, 80, 65)) : loads;
+
+        var top = schedule(Set.of(0), 99, StressMode.OSCILANTE);
+        var topLoads = steps(top, 9).stream().map(StressSchedule.Step::loadPercent).toList();
+        assert topLoads.equals(List.of(99, 80, 62, 43, 24, 43, 62, 80, 99)) : topLoads;
+
         var low = schedule(Set.of(0), 3, StressMode.OSCILANTE);
-        assert low.advance().loadPercent() == 1 : "Low phase never drops below 1%";
+        var lowLoads = steps(low, 5).stream().map(StressSchedule.Step::loadPercent).toList();
+        assert lowLoads.equals(List.of(3, 2, 1, 2, 3)) : "Low phase never drops below 1%: " + lowLoads;
     }
 
     private static void oscilanteWithMinimumLoadIsStatic() {

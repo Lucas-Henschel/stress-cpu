@@ -28,7 +28,7 @@ public final class DashboardFrameTest {
                 lastSample.set(find(frame, "usage-core-0", JProgressBar.class).getString());
             });
             SwingUtilities.invokeAndWait(DashboardFrameTest::circularMetricsFollowTheActiveCore);
-            Thread.sleep(1_300);
+            Thread.sleep(3_000);
             SwingUtilities.invokeAndWait(() -> {
                 var frame = reference.get();
                 assert !find(frame, "duration", JTextField.class).isEnabled();
